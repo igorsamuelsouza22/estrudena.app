@@ -1,0 +1,48 @@
+{
+  "name": "estrudena",
+  "version": "1.0.0",
+  "_comentario": "Descricao sem acentos de proposito: vai como argumento de linha de comando para o makensis e acaba nas propriedades do .exe, onde acentos chegam corrompidos.",
+  "description": "Sistema Estrudena - Orcamento, Proposta e Separacao de Material",
+  "author": "Estrudena",
+  "license": "UNLICENSED",
+  "private": true,
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "build:main": "node scripts/build-electron.mjs",
+    "build:renderer": "vite build",
+    "build": "npm run typecheck && npm run build:main && npm run build:renderer",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
+    "teste": "node scripts/teste-banco.mjs",
+    "teste:telas": "node scripts/diagnostico.mjs",
+    "teste:fluxo": "node scripts/teste-fluxo-proposta.mjs pdfs-fluxo",
+    "teste:pdf": "node scripts/gerar-pdf-teste.mjs pdfs",
+    "teste:atualizacao": "node scripts/teste-atualizacao.mjs",
+    "capturas": "node scripts/capturar-telas.mjs capturas",
+    "fetch:pg": "node scripts/fetch-postgres.mjs",
+    "fetch:fontes": "node scripts/fetch-fonts.mjs",
+    "icone": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gerar-icone.ps1",
+    "prepare:build": "node scripts/preparar-wincodesign.mjs",
+    "dist": "npm run build && npm run prepare:build && electron-builder --win nsis --publish never",
+    "dist:full": "npm run fetch:pg && npm run dist"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "pg": "8.13.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/node": "22.10.2",
+    "@types/pg": "8.11.10",
+    "@types/react": "18.3.18",
+    "@types/react-dom": "18.3.5",
+    "@vitejs/plugin-react": "4.3.4",
+    "electron": "33.3.1",
+    "electron-builder": "25.1.8",
+    "esbuild": "0.24.2",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "typescript": "5.7.2",
+    "vite": "6.0.7"
+  }
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+dist-electron/
+release/
+
+# Binários do PostgreSQL: 120 MB, baixados por `npm run fetch:pg`.
+resources/
+
+# Ícone gerado por scripts/gerar-icone.ps1 a partir do logo.
+build/icon.ico
+
+capturas/
+*.log
+
+pdfs/
+pdfs-fluxo/
+documentos/

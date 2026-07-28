@@ -1,0 +1,48 @@
+appId: br.com.estrudena.sistema
+productName: Sistema Estrudena
+copyright: Estrudena Esquadrias de Alumínio
+
+directories:
+  output: release
+  buildResources: build
+
+# O electron-builder já inclui as dependências de produção (pg e bcryptjs) com
+# a árvore completa — listar pacote a pacote só arriscaria esquecer um.
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+
+extraResources:
+  # Binários do PostgreSQL — só existem se `npm run fetch:pg` já rodou.
+  - from: resources/pgsql
+    to: pgsql
+    filter: ['**/*']
+  - from: build/setup-servidor.ps1
+    to: setup-servidor.ps1
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: Sistema-Estrudena-Setup-${version}.${ext}
+  icon: build/icon.ico
+
+nsis:
+  oneClick: false
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Sistema Estrudena
+  include: build/installer.nsh
+  installerLanguages: [pt_BR]
+  language: '1046'
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+
+compression: maximum
+asar: true
+asarUnpack:
+  - node_modules/pg/**
