@@ -45,6 +45,12 @@ const api = {
   publicarVersao: (versao: string, notas: string, porQuem: string) =>
     invoke('atualizacao:publicar', versao, notas, porQuem),
   removerVersao: (versao: string) => invoke('atualizacao:remover', versao),
+  atualizacaoPendente: () => invoke('atualizacao:pendente'),
+  onProgressoDownload: (cb: (p: { recebido: number; total: number }) => void) => {
+    const fn = (_e: unknown, p: { recebido: number; total: number }) => cb(p)
+    ipcRenderer.on('atualizacao:progresso', fn)
+    return () => ipcRenderer.removeListener('atualizacao:progresso', fn)
+  },
   testarRepo: (repo: string) => invoke('atualizacao:testarRepo', repo),
   definirRepo: (repo: string) => invoke('atualizacao:definirRepo', repo),
   baixarVersao: (versao: string, url?: string, arquivo?: string) =>

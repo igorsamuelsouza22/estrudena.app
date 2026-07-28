@@ -1,6 +1,6 @@
 {
   "name": "estrudena",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "_comentario": "Descricao sem acentos de proposito: vai como argumento de linha de comando para o makensis e acaba nas propriedades do .exe, onde acentos chegam corrompidos.",
   "description": "Sistema Estrudena - Orcamento, Proposta e Separacao de Material",
   "author": "Estrudena",
@@ -18,6 +18,7 @@
     "teste:fluxo": "node scripts/teste-fluxo-proposta.mjs pdfs-fluxo",
     "teste:pdf": "node scripts/gerar-pdf-teste.mjs pdfs",
     "teste:atualizacao": "node scripts/teste-atualizacao.mjs",
+    "teste:fechar": "node scripts/teste-instalar-ao-fechar.mjs",
     "capturas": "node scripts/capturar-telas.mjs capturas",
     "fetch:pg": "node scripts/fetch-postgres.mjs",
     "fetch:fontes": "node scripts/fetch-fonts.mjs",

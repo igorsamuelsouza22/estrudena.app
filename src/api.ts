@@ -34,6 +34,8 @@ interface Ponte {
   publicarVersao(versao: string, notas: string, porQuem: string):
     Promise<Resposta<{ versao: string; arquivo: string; tamanho: number } | null>>
   removerVersao(versao: string): Promise<Resposta<void>>
+  atualizacaoPendente(): Promise<Resposta<{ versao: string; caminho: string } | null>>
+  onProgressoDownload(cb: (p: { recebido: number; total: number }) => void): () => void
   testarRepo(repo: string): Promise<Resposta<string>>
   definirRepo(repo: string): Promise<Resposta<string>>
   baixarVersao(versao: string, url?: string, arquivo?: string): Promise<Resposta<string>>

@@ -11,7 +11,7 @@ Um computador da empresa é o **Servidor**: ele guarda o banco de dados.
 Todos os outros são **Terminais**: rodam o mesmo programa e leem/gravam no banco
 do servidor pela rede.
 
-O mesmo arquivo `Sistema-Estrudena-Setup-1.1.0.exe` instala os dois. A única
+O mesmo arquivo `Sistema-Estrudena-Setup-1.2.0.exe` instala os dois. A única
 escolha durante a instalação é essa. Não há nada para configurar depois.
 
 ```
@@ -62,7 +62,7 @@ autoridade certificadora, com custo anual). Com ele em mãos, é só configurar 
 Escolha o computador que fica **ligado durante o expediente**. De preferência um
 que não seja desligado no meio do dia.
 
-1. Copie `Sistema-Estrudena-Setup-1.1.0.exe` para esse computador.
+1. Copie `Sistema-Estrudena-Setup-1.2.0.exe` para esse computador.
 2. Clique com o botão direito → **Executar como administrador**.
 3. Na tela **Função desta máquina**, escolha **Servidor**.
 4. Avance até o fim.
@@ -92,7 +92,7 @@ Os dados ficam em `C:\ProgramData\Estrudena\pgdata`.
 
 Em cada uma das outras máquinas:
 
-1. Execute o mesmo `Sistema-Estrudena-Setup-1.1.0.exe`.
+1. Execute o mesmo `Sistema-Estrudena-Setup-1.2.0.exe`.
 2. Escolha **Terminal**.
 3. Avance até o fim.
 
@@ -165,9 +165,24 @@ administrador e use **Configurações → Carregar dados de exemplo**.
 
 ## Atualizar para uma versão nova
 
-O terminal avisa sozinho: aparece a faixa **"Versão X.Y.Z disponível"** com o
-botão **Baixar e instalar**. Ele baixa, abre o instalador, o Windows pede a
-confirmação de administrador de sempre e pronto.
+O terminal cuida disso sozinho. Ao abrir o sistema — e a cada 30 minutos, ou
+quando a janela volta ao foco — ele confere se há versão nova. Havendo, **já
+baixa o instalador em segundo plano** e mostra a faixa:
+
+> **Versão X.Y.Z disponível** · Baixado — instala em menos de um minuto ·
+> *agora não* · **Instalar agora**
+
+São dois caminhos, e nenhum deles interrompe o trabalho:
+
+- **Instalar agora** — o instalador abre na hora (já está baixado), o Windows
+  pede a confirmação de administrador e pronto.
+- **agora não** — a faixa some e a pessoa continua trabalhando. **Ao fechar o
+  sistema**, ele pergunta se quer instalar a atualização que já está baixada.
+  Aí ninguém perde nada, porque já estava saindo mesmo.
+
+A instalação nunca acontece sozinha, por dois motivos: ela troca arquivos em uso
+e fecharia o sistema no meio de um orçamento, e o Windows sempre vai pedir a
+confirmação de administrador de qualquer forma.
 
 **Atualizar não é reinstalar.** O instalador troca os arquivos no lugar,
 preserva o banco de dados, os atalhos e a pasta — e, por ser atualização, nem

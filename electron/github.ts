@@ -135,20 +135,38 @@ export async function diagnosticarRepo(repo: string): Promise<string> {
   return `Tudo certo: última release ${release.versao} (${release.arquivo}).`
 }
 
-/** Baixa o instalador da release para a pasta indicada. */
+/**
+ * Baixa o instalador da release para a pasta indicada.
+ * `aoProgredir` recebe os bytes já recebidos e o total, quando o servidor
+ * informa o tamanho — serve para a barra de progresso na tela.
+ */
 export async function baixarRelease(
-  url: string, nomeArquivo: string, pasta: string
+  url: string, nomeArquivo: string, pasta: string,
+  aoProgredir?: (recebido: number, total: number) => void
 ): Promise<string> {
   const r = await buscar(url, 'application/octet-stream')
   if (!r.ok || !r.body) throw new Error(`Download falhou (${r.status}).`)
 
+  const total = Number(r.headers.get('content-length') ?? 0)
   fs.mkdirSync(pasta, { recursive: true })
   const destino = path.join(pasta, nomeArquivo)
   const parcial = destino + '.parcial'
 
+  let recebido = 0
+  const contando = new TransformStream<Uint8Array, Uint8Array>({
+    transform(pedaco, controle) {
+      recebido += pedaco.byteLength
+      aoProgredir?.(recebido, total)
+      controle.enqueue(pedaco)
+    }
+  })
+
   // Grava num arquivo temporário: uma queda no meio não deixa para trás um
   // instalador truncado com cara de arquivo bom.
-  await pipeline(Readable.fromWeb(r.body as never), createWriteStream(parcial))
+  await pipeline(
+    Readable.fromWeb(r.body.pipeThrough(contando) as never),
+    createWriteStream(parcial)
+  )
   fs.renameSync(parcial, destino)
   return destino
 }

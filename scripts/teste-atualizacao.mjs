@@ -8,16 +8,21 @@
  *   node scripts/teste-atualizacao.mjs
  */
 import { spawn } from 'node:child_process'
-import { existsSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import electron from 'electron'
 
-const INSTALADOR = resolve('release/Sistema-Estrudena-Setup-1.0.0.exe')
-if (!existsSync(INSTALADOR)) {
-  console.error(`Instalador não encontrado em ${INSTALADOR}. Rode "npm run dist" antes.`)
+// Pega o instalador que estiver em release/, seja qual for a versão.
+const pasta = resolve('release')
+const achado = existsSync(pasta)
+  ? readdirSync(pasta).find(f => /^Sistema-Estrudena-Setup-.*\.exe$/.test(f))
+  : undefined
+if (!achado) {
+  console.error(`Nenhum instalador em ${pasta}. Rode "npm run dist" antes.`)
   process.exit(1)
 }
+const INSTALADOR = join(pasta, achado)
 
 const tmp = mkdtempSync(join(tmpdir(), 'estrudena-upd-'))
 const driver = join(tmp, 'driver.cjs')
@@ -125,21 +130,36 @@ app.whenReady().then(async () => {
   })()\`)
   ok(!!aviso, 'faixa de aviso aparece sozinha', aviso)
 
-  console.log('— baixando do servidor —')
+  console.log('— baixa sozinho, sem ninguem clicar —')
+  let pendente = null
+  for (let i = 0; i < 90; i++) {
+    pendente = await js("window.estrudena.atualizacaoPendente().then(r => r.ok ? r.dados : null)")
+    if (pendente) break
+    await espera(1000)
+  }
+  ok(!!pendente, 'instalador baixado em segundo plano, sem clique', pendente)
+  ok(pendente && fs.existsSync(pendente.caminho), 'arquivo no disco', pendente && pendente.caminho)
+  if (pendente && fs.existsSync(pendente.caminho)) {
+    const tam = fs.statSync(pendente.caminho).size
+    ok(tam === fs.statSync(INSTALADOR).size, 'tamanho identico ao original', tam)
+  }
+
+  const rotulo = await js(\`(() => {
+    const b = [...document.querySelectorAll('button')].find(x => /Instalar agora|Baixando/.test(x.textContent))
+    return b ? b.textContent.trim() : '(sem botao)'
+  })()\`)
+  ok(rotulo === 'Instalar agora', 'botao ja oferece instalar direto', rotulo)
+
+  console.log('— instalando a pedido —')
   const clicou = await js(\`(() => {
-    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Baixar e instalar')
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Instalar agora')
     if (!b) return false
     b.click(); return true
   })()\`)
-  ok(clicou, 'botao de atualizar disponivel na faixa')
-  for (let i = 0; i < 90 && !abriu; i++) await espera(1000)
-  ok(!!abriu, 'instalador baixado e aberto', abriu)
-  ok(abriu && fs.existsSync(abriu), 'arquivo existe no disco', abriu)
-  if (abriu && fs.existsSync(abriu)) {
-    const tam = fs.statSync(abriu).size
-    ok(tam === fs.statSync(INSTALADOR).size, 'tamanho identico ao original', tam)
-    fs.unlinkSync(abriu)
-  }
+  ok(clicou, 'clicou em Instalar agora')
+  for (let i = 0; i < 30 && !abriu; i++) await espera(1000)
+  ok(!!abriu, 'instalador aberto para o usuario', abriu)
+  if (abriu && fs.existsSync(abriu)) fs.unlinkSync(abriu)
 
   // Limpa a versao de teste.
   const limpou = await js("window.estrudena.removerVersao('9.9.9').then(r => r.ok)")

@@ -1,53 +1,102 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { chamar, ponte } from './api'
 import { muted45, muted50 } from './ui'
 import type { EstadoAtualizacao } from './shared/types'
 
-/** Intervalo de reconferência: quem deixa o sistema aberto o dia todo também é avisado. */
+/** Reconferência periódica: quem deixa o sistema aberto o dia todo também é avisado. */
 const INTERVALO = 30 * 60 * 1000
+/** Volta do almoço não precisa disparar consulta a cada clique na janela. */
+const INTERVALO_FOCO = 5 * 60 * 1000
 
 const mb = (bytes: number): string => (bytes / 1024 / 1024).toFixed(0) + ' MB'
 
+type Fase = 'ocioso' | 'baixando' | 'pronto' | 'instalando' | 'erro'
+
 /**
- * Avisa quando o servidor tem uma versão mais nova que a instalada nesta
- * máquina e conduz a atualização: baixa o instalador do próprio servidor e
- * abre. O Windows ainda pede confirmação de administrador — nada roda sozinho.
+ * Avisa quando há versão mais nova que a instalada nesta máquina.
+ *
+ * O instalador é baixado em segundo plano assim que a novidade aparece, para
+ * que instalar seja imediato quando a pessoa quiser. A instalação em si nunca
+ * acontece sozinha: troca arquivos em uso e derrubaria o sistema no meio de um
+ * orçamento. Quem não quiser parar agora pode simplesmente ignorar — ao fechar
+ * o sistema, ele oferece instalar.
  */
 export function AvisoAtualizacao() {
   const [estado, setEstado] = useState<EstadoAtualizacao | null>(null)
   const [dispensado, setDispensado] = useState('')
-  const [ocupado, setOcupado] = useState(false)
-  const [passo, setPasso] = useState('')
+  const [fase, setFase] = useState<Fase>('ocioso')
+  const [pct, setPct] = useState(0)
+  const [recado, setRecado] = useState('')
   const [baixado, setBaixado] = useState('')
+  const ultimaConferida = useRef(0)
+  // Guarda qual versão já foi baixada, para não baixar de novo a cada render.
+  const baixando = useRef('')
 
-  useEffect(() => {
-    let vivo = true
-    const conferir = async () => {
-      try {
-        const e = await chamar(ponte().estadoAtualizacao())
-        if (vivo) setEstado(e)
-      } catch { /* servidor sem a tabela ainda, ou fora do ar: sem aviso */ }
-    }
-    void conferir()
-    const t = window.setInterval(conferir, INTERVALO)
-    return () => { vivo = false; window.clearInterval(t) }
+  const conferir = useCallback(async () => {
+    ultimaConferida.current = Date.now()
+    try {
+      setEstado(await chamar(ponte().estadoAtualizacao()))
+    } catch { /* servidor fora do ar ou sem internet: simplesmente não avisa */ }
   }, [])
 
-  if (!estado?.temNova || !estado.disponivel) return null
-  const nova = estado.disponivel
-  if (dispensado === nova.versao) return null
+  useEffect(() => {
+    void conferir()
+    const t = window.setInterval(conferir, INTERVALO)
+    const aoFocar = () => {
+      if (Date.now() - ultimaConferida.current > INTERVALO_FOCO) void conferir()
+    }
+    window.addEventListener('focus', aoFocar)
+    return () => {
+      window.clearInterval(t)
+      window.removeEventListener('focus', aoFocar)
+    }
+  }, [conferir])
 
-  const atualizar = async () => {
-    setOcupado(true)
+  useEffect(() => ponte().onProgressoDownload(({ recebido, total }) => {
+    if (total > 0) setPct(Math.min(100, Math.round(recebido / total * 100)))
+  }), [])
+
+  // Se o processo principal já tem um instalador baixado (de antes desta tela
+  // montar), aproveita em vez de baixar de novo.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const p = await chamar(ponte().atualizacaoPendente())
+        if (p) { baixando.current = p.versao; setBaixado(p.caminho); setFase('pronto') }
+      } catch { /* sem pendência */ }
+    })()
+  }, [])
+
+  const nova = estado?.temNova ? estado.disponivel : null
+
+  // Baixa em segundo plano assim que a novidade aparece.
+  useEffect(() => {
+    if (!nova || baixando.current === nova.versao) return
+    baixando.current = nova.versao
+    setFase('baixando')
+    setPct(0)
+    void (async () => {
+      try {
+        const caminho = await chamar(ponte().baixarVersao(nova.versao, nova.url, nova.arquivo))
+        setBaixado(caminho)
+        setFase('pronto')
+      } catch (e) {
+        setRecado(e instanceof Error ? e.message : 'Não consegui baixar a atualização.')
+        setFase('erro')
+        baixando.current = '' // permite nova tentativa
+      }
+    })()
+  }, [nova])
+
+  if (!nova || dispensado === nova.versao) return null
+
+  const instalar = async () => {
+    setFase('instalando')
     try {
-      setPasso(nova.origem === 'github' ? 'Baixando do GitHub…' : 'Baixando do servidor…')
-      const caminho = await chamar(ponte().baixarVersao(nova.versao, nova.url, nova.arquivo))
-      setBaixado(caminho)
-      setPasso('Abrindo o instalador…')
-      await chamar(ponte().abrirInstalador(caminho))
+      await chamar(ponte().abrirInstalador(baixado))
     } catch (e) {
-      setPasso(e instanceof Error ? e.message : 'Não consegui baixar a atualização.')
-      setOcupado(false)
+      setRecado(e instanceof Error ? e.message : 'Não consegui abrir o instalador.')
+      setFase('erro')
     }
   }
 
@@ -65,16 +114,29 @@ export function AvisoAtualizacao() {
       }}>
         Versão {nova.versao} disponível
       </span>
+
       <span className="trunc" style={{ flex: 1, fontSize: 13, color: 'var(--color-accent-700)' }}>
-        {nova.notas || `Esta máquina está na ${estado.versaoLocal}.`}
+        {nova.notas || `Esta máquina está na ${estado?.versaoLocal}.`}
         <span style={{ color: muted50 }}>
           {' '}· {mb(nova.tamanho)} · {nova.origem === 'github' ? 'via GitHub' : `publicada por ${nova.publicadoPor || '—'}`}
         </span>
       </span>
 
-      {passo && <span style={{ fontSize: 12, color: muted45, whiteSpace: 'nowrap' }}>{passo}</span>}
+      {fase === 'baixando' && (
+        <span className="tnum" style={{ fontSize: 12, color: muted45, whiteSpace: 'nowrap' }}>
+          Baixando{pct ? ` ${pct}%` : '…'}
+        </span>
+      )}
+      {fase === 'erro' && (
+        <span style={{ fontSize: 12, color: 'var(--color-accent-800)', whiteSpace: 'nowrap' }}>{recado}</span>
+      )}
+      {fase === 'pronto' && (
+        <span style={{ fontSize: 12, color: muted45, whiteSpace: 'nowrap' }}>
+          Baixado — instala em menos de um minuto
+        </span>
+      )}
 
-      {baixado && !ocupado && (
+      {fase === 'pronto' && (
         <button
           className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 8px' }}
           onClick={() => void chamar(ponte().mostrarNaPasta(baixado))}
@@ -83,15 +145,18 @@ export function AvisoAtualizacao() {
 
       <button
         className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 8px' }}
-        disabled={ocupado}
+        disabled={fase === 'instalando'}
         onClick={() => setDispensado(nova.versao)}
+        title="O sistema oferece instalar quando você fechar"
       >agora não</button>
 
       <button
         className="btn btn-primary" style={{ minHeight: 28, padding: '3px 12px', fontSize: 13 }}
-        disabled={ocupado}
-        onClick={() => void atualizar()}
-      >{ocupado ? 'Aguarde…' : 'Baixar e instalar'}</button>
+        disabled={fase === 'baixando' || fase === 'instalando'}
+        onClick={() => void instalar()}
+      >
+        {fase === 'baixando' ? 'Baixando…' : fase === 'instalando' ? 'Abrindo…' : 'Instalar agora'}
+      </button>
     </div>
   )
 }
