@@ -36,6 +36,56 @@ export async function definirRepo(repo: string): Promise<void> {
   await comCliente(c => c.query('UPDATE config SET github_repo = $1 WHERE id', [repo]))
 }
 
+/**
+ * Tenta assumir a tarefa de consultar o GitHub.
+ *
+ * Só uma máquina por vez ganha: o UPDATE condicional é atômico, então os outros
+ * terminais seguem usando o cache em vez de gastarem cota à toa. Devolve true
+ * para quem ficou responsável pela consulta desta rodada.
+ */
+export async function reservarChecagemGithub(idadeMinutos: number): Promise<boolean> {
+  return comCliente(async c => {
+    const { rows } = await c.query(
+      `UPDATE atualizacao_cache SET verificado_em = now()
+       WHERE id AND verificado_em < now() - ($1 || ' minutes')::interval
+       RETURNING true AS coube`,
+      [String(idadeMinutos)]
+    )
+    return rows.length > 0
+  })
+}
+
+/** Última resposta guardada do GitHub, ou null se nunca houve uma. */
+export async function lerCacheGithub(): Promise<VersaoPublicada | null> {
+  return comCliente(async c => {
+    const { rows } = await c.query('SELECT * FROM atualizacao_cache WHERE id')
+    const r = rows[0]
+    if (!r || !r.versao) return null
+    return {
+      versao: r.versao,
+      publicadoEm: r.publicado_em,
+      publicadoPor: 'GitHub',
+      notas: r.notas,
+      arquivo: r.arquivo,
+      tamanho: Number(r.tamanho),
+      sha256: '',
+      origem: 'github' as const,
+      url: r.url
+    }
+  })
+}
+
+export async function gravarCacheGithub(v: VersaoPublicada | null): Promise<void> {
+  await comCliente(c => c.query(
+    `UPDATE atualizacao_cache
+     SET versao = $1, arquivo = $2, url = $3, tamanho = $4, notas = $5, publicado_em = $6
+     WHERE id`,
+    v
+      ? [v.versao, v.arquivo, v.url ?? '', v.tamanho, v.notas, v.publicadoEm]
+      : ['', '', '', 0, '', '']
+  ))
+}
+
 /** Versão publicada mais recente, sem trazer o instalador junto. */
 export async function versaoPublicada(): Promise<VersaoPublicada | null> {
   return comCliente(async c => {

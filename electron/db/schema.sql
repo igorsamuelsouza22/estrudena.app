@@ -251,6 +251,24 @@ CREATE TABLE IF NOT EXISTS versoes (
   conteudo      bytea NOT NULL
 );
 
+-- Resposta mais recente do GitHub sobre a última release.
+--
+-- O GitHub permite 60 consultas por hora por IP, e todas as máquinas da empresa
+-- saem pelo mesmo IP. Sem este cache, poucos terminais consultando de tempos em
+-- tempos esgotariam a cota e a atualização pararia de chegar. Assim é uma
+-- consulta por hora para a rede inteira, independente de quantos terminais.
+CREATE TABLE IF NOT EXISTS atualizacao_cache (
+  id            boolean PRIMARY KEY DEFAULT true CHECK (id),
+  verificado_em timestamptz NOT NULL DEFAULT to_timestamp(0),
+  versao        text NOT NULL DEFAULT '',
+  arquivo       text NOT NULL DEFAULT '',
+  url           text NOT NULL DEFAULT '',
+  tamanho       bigint NOT NULL DEFAULT 0,
+  notas         text NOT NULL DEFAULT '',
+  publicado_em  text NOT NULL DEFAULT ''
+);
+INSERT INTO atualizacao_cache (id) VALUES (true) ON CONFLICT (id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS separacao_conf (
   orcamento_id text    NOT NULL REFERENCES separacoes(orcamento_id) ON DELETE CASCADE,
   ordem        integer NOT NULL,

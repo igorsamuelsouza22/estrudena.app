@@ -120,6 +120,33 @@ function handler<A extends unknown[], R>(
   })
 }
 
+/** De quanto em quanto tempo a rede toda pode consultar o GitHub. */
+const MINUTOS_ENTRE_CONSULTAS = 60
+
+/**
+ * Consulta a última release, mas no máximo uma vez por hora para a rede inteira.
+ *
+ * O GitHub permite 60 consultas por hora por IP e todas as máquinas da empresa
+ * saem pelo mesmo IP — sem esse controle, alguns terminais consultando de tempos
+ * em tempos esgotariam a cota e a atualização deixaria de chegar. O resultado
+ * fica no banco, que todas já enxergam.
+ */
+async function consultarGithubComCache(repo: string) {
+  try {
+    const souEu = await versoes.reservarChecagemGithub(MINUTOS_ENTRE_CONSULTAS)
+    if (souEu) {
+      const fresco = await github.ultimaRelease(repo)
+      // Consulta falhou (sem internet, cota estourada): preserva o que já
+      // estava guardado em vez de apagar e ficar sem saber de nada.
+      if (fresco) await versoes.gravarCacheGithub(fresco)
+    }
+    return await versoes.lerCacheGithub()
+  } catch (e) {
+    console.log('[atualizacao] cache indisponivel:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 function registrarIpc(): void {
   handler('conexao:conectar', async (host?: string) => {
     const st = await conectar(host, etapa => {
@@ -198,7 +225,7 @@ function registrarIpc(): void {
     const repo = await versoes.repoConfigurado().catch(() => '')
     const [doServidor, doGithub] = await Promise.all([
       versoes.versaoPublicada().catch(() => null),
-      repo ? github.ultimaRelease(repo).catch(() => null) : Promise.resolve(null)
+      repo ? consultarGithubComCache(repo) : Promise.resolve(null)
     ])
 
     const candidatos = [doServidor, doGithub].filter(v => v !== null)
@@ -214,7 +241,15 @@ function registrarIpc(): void {
     }
   })
 
-  handler('atualizacao:testarRepo', (repo: string) => github.diagnosticarRepo(repo))
+  /** Conferência a pedido do administrador: também renova o cache da rede. */
+  handler('atualizacao:testarRepo', async (repo: string) => {
+    const diagnostico = await github.diagnosticarRepo(repo)
+    if (diagnostico.startsWith('Tudo certo')) {
+      const fresco = await github.ultimaRelease(repo)
+      if (fresco) await versoes.gravarCacheGithub(fresco)
+    }
+    return diagnostico
+  })
 
   handler('atualizacao:definirRepo', async (repo: string) => {
     const limpo = repo.trim() ? github.normalizarRepo(repo) : ''

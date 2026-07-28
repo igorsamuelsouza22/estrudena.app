@@ -67,27 +67,37 @@ export async function ultimaRelease(repo: string): Promise<VersaoGithub | null> 
   const alvo = normalizarRepo(repo)
   if (!alvo) return null
 
+  // Falhar aqui é normal (sem internet, sem release ainda) e não pode
+  // atrapalhar a abertura do sistema. Mas o motivo vai para o log: um canal de
+  // atualização que para de funcionar em silêncio é pior que um que avisa.
+  const desistir = (motivo: string): null => {
+    console.log(`[atualizacao] ${alvo}: ${motivo}`)
+    return null
+  }
+
   let r: Response
   try {
     r = await buscar(`https://api.github.com/repos/${alvo}/releases/latest`,
       'application/vnd.github+json')
-  } catch {
-    return null // sem internet, ou GitHub fora do ar
+  } catch (e) {
+    return desistir(`falha de rede — ${e instanceof Error ? e.message : String(e)}`)
   }
-  if (!r.ok) return null
+  if (!r.ok) return desistir(`GitHub respondeu ${r.status}`)
 
   const rel = await r.json() as ReleaseGithub
-  if (rel.draft) return null
+  if (rel.draft) return desistir('a última release é rascunho')
 
   // A tag costuma vir como "v1.2.3"; guardamos só os números.
   const versao = String(rel.tag_name ?? '').trim().replace(/^v/i, '')
-  if (!/^\d+\.\d+\.\d+$/.test(versao)) return null
+  if (!/^\d+\.\d+\.\d+$/.test(versao)) {
+    return desistir(`etiqueta "${rel.tag_name}" fora do formato v1.2.3`)
+  }
 
   // Pode haver mais de um .exe na release (arm64, por exemplo). O sistema é
   // x64, então descarta os de outra arquitetura antes de escolher.
   const exes = (rel.assets ?? []).filter(a => a.name.toLowerCase().endsWith('.exe'))
   const exe = exes.find(a => !/arm|ia32|x86(?!_64)/i.test(a.name)) ?? exes[0]
-  if (!exe) return null
+  if (!exe) return desistir(`release ${versao} não tem instalador .exe anexado`)
 
   return {
     origem: 'github',
@@ -124,7 +134,16 @@ export async function diagnosticarRepo(repo: string): Promise<string> {
            'ou é privado — o GitHub responde a mesma coisa nos dois casos. ' +
            'Para servir de canal de atualização, ele precisa ser público.'
   }
-  if (r.status === 403) return 'O GitHub recusou a consulta (limite de acesso). Tente daqui a pouco.'
+  if (r.status === 403 || r.status === 429) {
+    const reset = Number(r.headers.get('x-ratelimit-reset') ?? 0)
+    const quando = reset
+      ? new Date(reset * 1000).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : ''
+    return 'O GitHub limita 60 consultas por hora para cada endereço de internet, e a cota '
+      + 'desta rede acabou' + (quando ? ` — volta às ${quando}.` : '.')
+      + ' O sistema consulta no máximo uma vez por hora para a rede toda, então isso costuma '
+      + 'acontecer só se alguém estiver testando.'
+  }
   if (!r.ok) return `O GitHub respondeu ${r.status}.`
 
   const release = await ultimaRelease(alvo)

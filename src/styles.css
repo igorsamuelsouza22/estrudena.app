@@ -175,6 +175,25 @@ select.input { cursor: pointer }
 .barra > div { height: 5px; background: var(--color-accent) }
 
 @keyframes eIn { from { opacity: 0 } to { opacity: 1 } }
+
+/* Barra de progresso da atualização, na base da faixa de aviso. */
+.barra-atualizacao {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: color-mix(in srgb, var(--color-accent) 15%, transparent);
+  overflow: hidden;
+}
+.barra-atualizacao > div {
+  height: 3px; background: var(--color-accent);
+  transition: width .25s ease;
+}
+/* Sem tamanho total conhecido (download vindo do banco): vai e volta. */
+@keyframes indeterminada {
+  0%   { margin-left: -35%; width: 35% }
+  100% { margin-left: 100%; width: 35% }
+}
+.barra-atualizacao.indefinida > div {
+  width: 35%; animation: indeterminada 1.3s ease-in-out infinite; transition: none;
+}
 .flash {
   font-size: 12px; letter-spacing: .01em; color: var(--color-accent-800);
   background: var(--color-accent-100); padding: 4px 9px; animation: eIn .2s ease; white-space: nowrap;

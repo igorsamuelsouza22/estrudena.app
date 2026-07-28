@@ -26,6 +26,7 @@ export function AvisoAtualizacao() {
   const [dispensado, setDispensado] = useState('')
   const [fase, setFase] = useState<Fase>('ocioso')
   const [pct, setPct] = useState(0)
+  const [recebido, setRecebido] = useState(0)
   const [recado, setRecado] = useState('')
   const [baixado, setBaixado] = useState('')
   const ultimaConferida = useRef(0)
@@ -52,8 +53,11 @@ export function AvisoAtualizacao() {
     }
   }, [conferir])
 
-  useEffect(() => ponte().onProgressoDownload(({ recebido, total }) => {
-    if (total > 0) setPct(Math.min(100, Math.round(recebido / total * 100)))
+  useEffect(() => ponte().onProgressoDownload(p => {
+    setRecebido(p.recebido)
+    // O download vindo do banco não informa total; nesse caso a barra fica
+    // indeterminada em vez de mostrar uma porcentagem inventada.
+    if (p.total > 0) setPct(Math.min(100, Math.round(p.recebido / p.total * 100)))
   }), [])
 
   // Se o processo principal já tem um instalador baixado (de antes desta tela
@@ -75,6 +79,7 @@ export function AvisoAtualizacao() {
     baixando.current = nova.versao
     setFase('baixando')
     setPct(0)
+    setRecebido(0)
     void (async () => {
       try {
         const caminho = await chamar(ponte().baixarVersao(nova.versao, nova.url, nova.arquivo))
@@ -104,10 +109,16 @@ export function AvisoAtualizacao() {
     <div
       className="noprint"
       style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '9px 24px',
+        position: 'relative',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '9px 24px 11px',
         background: 'var(--color-accent-200)', borderBottom: '1px solid var(--color-divider)'
       }}
     >
+      {fase === 'baixando' && (
+        <div className={'barra-atualizacao' + (pct ? '' : ' indefinida')}>
+          <div style={pct ? { width: `${pct}%` } : undefined} />
+        </div>
+      )}
       <span style={{
         fontFamily: 'var(--font-heading)', fontSize: 12, letterSpacing: '.04em',
         color: 'var(--color-accent-800)', whiteSpace: 'nowrap'
@@ -124,7 +135,9 @@ export function AvisoAtualizacao() {
 
       {fase === 'baixando' && (
         <span className="tnum" style={{ fontSize: 12, color: muted45, whiteSpace: 'nowrap' }}>
-          Baixando{pct ? ` ${pct}%` : '…'}
+          {pct
+            ? `Baixando ${pct}% · ${mb(recebido)} de ${mb(nova.tamanho)}`
+            : 'Baixando…'}
         </span>
       )}
       {fase === 'erro' && (
