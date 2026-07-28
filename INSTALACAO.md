@@ -11,7 +11,7 @@ Um computador da empresa é o **Servidor**: ele guarda o banco de dados.
 Todos os outros são **Terminais**: rodam o mesmo programa e leem/gravam no banco
 do servidor pela rede.
 
-O mesmo arquivo `Sistema-Estrudena-Setup-1.0.0.exe` instala os dois. A única
+O mesmo arquivo `Sistema-Estrudena-Setup-1.1.0.exe` instala os dois. A única
 escolha durante a instalação é essa. Não há nada para configurar depois.
 
 ```
@@ -62,7 +62,7 @@ autoridade certificadora, com custo anual). Com ele em mãos, é só configurar 
 Escolha o computador que fica **ligado durante o expediente**. De preferência um
 que não seja desligado no meio do dia.
 
-1. Copie `Sistema-Estrudena-Setup-1.0.0.exe` para esse computador.
+1. Copie `Sistema-Estrudena-Setup-1.1.0.exe` para esse computador.
 2. Clique com o botão direito → **Executar como administrador**.
 3. Na tela **Função desta máquina**, escolha **Servidor**.
 4. Avance até o fim.
@@ -92,7 +92,7 @@ Os dados ficam em `C:\ProgramData\Estrudena\pgdata`.
 
 Em cada uma das outras máquinas:
 
-1. Execute o mesmo `Sistema-Estrudena-Setup-1.0.0.exe`.
+1. Execute o mesmo `Sistema-Estrudena-Setup-1.1.0.exe`.
 2. Escolha **Terminal**.
 3. Avance até o fim.
 
@@ -306,3 +306,4 @@ A senha que o aplicativo usa para falar com o banco está em
 permite o terminal achar o servidor sem configuração. Para trocá-la, altere o
 arquivo, rode `ALTER ROLE estrudena WITH PASSWORD '<nova>';` no servidor e
 reinstale os terminais.
+
