@@ -59,6 +59,8 @@ npm run teste:telas        # navega as telas do perfil e confere menu e console
 npm run teste:fluxo        # orçamento → proposta → PDFs → lista
 npm run teste:pdf          # gera os PDFs e analisa fundo, imagens e paginação
 npm run teste:atualizacao  # publica uma versão e verifica o aviso e o download
+npm run teste:fechar       # confere que a atualização baixada instala ao fechar
+npm run teste:progresso    # baixa a release de verdade e amostra a barra na tela
 ```
 
 ## Publicando uma versão nova
@@ -67,9 +69,16 @@ npm run teste:atualizacao  # publica uma versão e verifica o aviso e o download
 2. Publique uma release com a etiqueta `vX.Y.Z` e o `.exe` de `release/` anexado.
 
 Os terminais consultam as releases deste repositório e avisam sozinhos que há
-versão nova. Também é possível publicar pelo próprio sistema, guardando o
-instalador no banco — útil onde não há internet. Detalhes em
-[INSTALACAO.md](INSTALACAO.md).
+versão nova: a faixa aparece, o download começa em segundo plano mostrando a
+porcentagem e, ao terminar, o instalador roda quando a pessoa fechar o sistema.
+
+O GitHub limita 60 consultas por hora por endereço de internet e a empresa
+inteira sai por um só, então a consulta é reservada no banco (tabela
+`atualizacao_cache`) e vale para a rede toda: uma máquina pergunta por hora, as
+demais leem a resposta dela.
+
+Também é possível publicar pelo próprio sistema, guardando o instalador no
+banco — útil onde não há internet. Detalhes em [INSTALACAO.md](INSTALACAO.md).
 
 ## Aviso sobre a senha do banco
 

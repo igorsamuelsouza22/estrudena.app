@@ -40,7 +40,7 @@ const api = {
 
   consultarCnpj: (cnpj: string) => invoke('cnpj:consultar', cnpj),
 
-  estadoAtualizacao: () => invoke('atualizacao:estado'),
+  estadoAtualizacao: (forcar?: boolean) => invoke('atualizacao:estado', forcar),
   historicoVersoes: () => invoke('atualizacao:historico'),
   publicarVersao: (versao: string, notas: string, porQuem: string) =>
     invoke('atualizacao:publicar', versao, notas, porQuem),

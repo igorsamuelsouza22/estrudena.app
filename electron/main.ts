@@ -130,10 +130,14 @@ const MINUTOS_ENTRE_CONSULTAS = 60
  * saem pelo mesmo IP — sem esse controle, alguns terminais consultando de tempos
  * em tempos esgotariam a cota e a atualização deixaria de chegar. O resultado
  * fica no banco, que todas já enxergam.
+ *
+ * `forcar` ignora o intervalo: quando alguém clica em "verificar atualização",
+ * a resposta precisa ser de agora, senão o botão não serviria para nada. É um
+ * clique manual, não tem como virar consulta em massa.
  */
-async function consultarGithubComCache(repo: string) {
+async function consultarGithubComCache(repo: string, forcar = false) {
   try {
-    const souEu = await versoes.reservarChecagemGithub(MINUTOS_ENTRE_CONSULTAS)
+    const souEu = forcar || await versoes.reservarChecagemGithub(MINUTOS_ENTRE_CONSULTAS)
     if (souEu) {
       const fresco = await github.ultimaRelease(repo)
       // Consulta falhou (sem internet, cota estourada): preserva o que já
@@ -221,11 +225,11 @@ function registrarIpc(): void {
    * chegar primeiro (quem desenvolve publica direto); o servidor cobre os
    * terminais sem internet.
    */
-  handler('atualizacao:estado', async () => {
+  handler('atualizacao:estado', async (forcar?: boolean) => {
     const repo = await versoes.repoConfigurado().catch(() => '')
     const [doServidor, doGithub] = await Promise.all([
       versoes.versaoPublicada().catch(() => null),
-      repo ? consultarGithubComCache(repo) : Promise.resolve(null)
+      repo ? consultarGithubComCache(repo, forcar === true) : Promise.resolve(null)
     ])
 
     const candidatos = [doServidor, doGithub].filter(v => v !== null)

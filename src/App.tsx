@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { chamar, ponte } from './api'
 import { Provider } from './store'
 import { Shell } from './Shell'
-import type { ConnState, DB, Usuario } from './shared/types'
+import type { ConnState, DB, Usuario, VersaoPublicada } from './shared/types'
 
 export function App() {
   const [conn, setConn] = useState<ConnState>({
@@ -127,6 +128,9 @@ function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void 
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [ocupado, setOcupado] = useState(false)
+  // Fechada por padrão: quem usa o sistema todo dia já sabe o próprio usuário,
+  // e a lista aberta empurrava o rodapé para fora da janela em telas menores.
+  const [contasAbertas, setContasAbertas] = useState(false)
 
   const entrar = async () => {
     if (!usuario.trim()) return setErro('Informe o usuário.')
@@ -187,8 +191,25 @@ function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void 
         </div>
 
         <div style={{ background: '#f8f9fa', borderTop: '1px solid var(--color-divider)' }}>
-          <div style={{ fontSize: 12, color: '#5f6368', padding: '14px 32px 8px' }}>Contas cadastradas</div>
-          {ativos.map(u => (
+          <button
+            type="button"
+            onClick={() => setContasAbertas(a => !a)}
+            aria-expanded={contasAbertas}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              width: '100%', padding: '13px 32px', border: 0, background: 'none',
+              font: 'inherit', fontSize: 12, color: '#5f6368', cursor: 'pointer', textAlign: 'left'
+            }}
+          >
+            <span>Contas cadastradas <span style={{ color: '#9aa0a6' }}>({ativos.length})</span></span>
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
+              style={{ transform: contasAbertas ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
+            >
+              <path d="M7 10l5 5 5-5" stroke="#5f6368" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+          {contasAbertas && ativos.map(u => (
             <div
               key={u.id}
               onClick={() => { setUsuario(u.usuario); setErro('') }}
@@ -210,8 +231,108 @@ function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void 
             <span>{p.db.materiais.length} itens · {p.db.orcamentos.length} propostas</span>
             <span>servidor {p.conn.host}</span>
           </div>
+
+          <VerificarAtualizacao />
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Conferência de versão a pedido, na tela de entrada.
+ *
+ * O aviso automático só aparece depois de entrar, e a atualização instala com
+ * o sistema fechado — então a hora natural de resolver isso é antes de começar
+ * o dia, não no meio de um orçamento. O clique ignora o intervalo de uma
+ * consulta por hora da rede: quem apertou quer a resposta de agora.
+ */
+function VerificarAtualizacao() {
+  type Fase = 'ocioso' | 'verificando' | 'atual' | 'nova' | 'baixando' | 'pronto' | 'erro'
+  const [fase, setFase] = useState<Fase>('ocioso')
+  const [recado, setRecado] = useState('')
+  const [nova, setNova] = useState<VersaoPublicada | null>(null)
+  const [pct, setPct] = useState(0)
+  const [caminho, setCaminho] = useState('')
+
+  useEffect(() => ponte().onProgressoDownload(p => {
+    if (p.total > 0) setPct(Math.min(100, Math.round(p.recebido / p.total * 100)))
+  }), [])
+
+  const verificar = async () => {
+    setFase('verificando')
+    setRecado('')
+    try {
+      const e = await chamar(ponte().estadoAtualizacao(true))
+      if (e.temNova && e.disponivel) {
+        setNova(e.disponivel)
+        setFase('nova')
+      } else {
+        setRecado(`Esta máquina já está na versão ${e.versaoLocal}, a mais recente.`)
+        setFase('atual')
+      }
+    } catch (err) {
+      setRecado(err instanceof Error ? err.message : 'Não consegui verificar agora.')
+      setFase('erro')
+    }
+  }
+
+  const baixar = async () => {
+    if (!nova) return
+    setFase('baixando')
+    setPct(0)
+    try {
+      setCaminho(await chamar(ponte().baixarVersao(nova.versao, nova.url, nova.arquivo)))
+      setFase('pronto')
+    } catch (err) {
+      setRecado(err instanceof Error ? err.message : 'Não consegui baixar a atualização.')
+      setFase('erro')
+    }
+  }
+
+  const instalar = async () => {
+    try {
+      await chamar(ponte().abrirInstalador(caminho))
+    } catch (err) {
+      setRecado(err instanceof Error ? err.message : 'Não consegui abrir o instalador.')
+      setFase('erro')
+    }
+  }
+
+  const link: CSSProperties = {
+    border: 0, background: 'none', font: 'inherit', fontSize: 12, padding: 0,
+    color: 'var(--color-accent-700)', cursor: 'pointer', textDecoration: 'underline'
+  }
+
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+      minHeight: 38, padding: '0 32px', borderTop: '1px solid var(--color-divider)',
+      fontSize: 12, color: '#5f6368'
+    }}>
+      {fase === 'nova' ? (
+        <>
+          <span className="trunc">Versão {nova!.versao} disponível</span>
+          <button type="button" style={link} onClick={() => void baixar()}>baixar e instalar</button>
+        </>
+      ) : fase === 'baixando' ? (
+        <span className="tnum">Baixando {pct}%…</span>
+      ) : fase === 'pronto' ? (
+        <>
+          <span className="trunc">Baixado. O sistema fecha para instalar.</span>
+          <button type="button" style={link} onClick={() => void instalar()}>instalar agora</button>
+        </>
+      ) : (
+        <>
+          <span className="trunc" style={{ color: fase === 'erro' ? '#b3261e' : '#5f6368' }}>{recado}</span>
+          <button
+            type="button" style={{ ...link, opacity: fase === 'verificando' ? 0.6 : 1 }}
+            disabled={fase === 'verificando'} onClick={() => void verificar()}
+          >
+            {fase === 'verificando' ? 'verificando…' : 'verificar atualização'}
+          </button>
+        </>
+      )}
     </div>
   )
 }

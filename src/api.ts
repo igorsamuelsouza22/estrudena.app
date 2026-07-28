@@ -29,7 +29,8 @@ interface Ponte {
   listaDel(cat: string, valor: string): Promise<Resposta<void>>
   restaurarExemplo(): Promise<Resposta<void>>
   consultarCnpj(cnpj: string): Promise<Resposta<DadosCnpj>>
-  estadoAtualizacao(): Promise<Resposta<EstadoAtualizacao>>
+  /** `forcar` ignora o intervalo de uma consulta por hora da rede. */
+  estadoAtualizacao(forcar?: boolean): Promise<Resposta<EstadoAtualizacao>>
   historicoVersoes(): Promise<Resposta<VersaoPublicada[]>>
   publicarVersao(versao: string, notas: string, porQuem: string):
     Promise<Resposta<{ versao: string; arquivo: string; tamanho: number } | null>>
