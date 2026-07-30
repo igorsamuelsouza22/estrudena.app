@@ -3,7 +3,7 @@ import path from 'node:path'
 import { app } from 'electron'
 import pg, { Pool, PoolClient } from 'pg'
 import { DB_NAME, DB_PASSWORD, DB_PORT, DB_USER } from './credentials'
-import { procurarServidor } from './discovery'
+import { interfacesLocais, procurarServidor } from './discovery'
 import { migrar } from './migrate'
 import type { ConnState } from '../../src/shared/types'
 
@@ -95,9 +95,18 @@ export async function conectar(
 
     const achado = await procurarServidor(salva ? [salva.host] : [], progresso)
     if (!achado) {
+      // Dizer quais redes foram varridas resolve sozinho o engano mais comum:
+      // o terminal no Wi-Fi e o servidor no cabo, em faixas diferentes. Sem
+      // isso a mensagem é a mesma para "servidor desligado", "firewall
+      // bloqueando" e "rede errada", e ninguém sabe por onde começar.
+      const redes = interfacesLocais().map(n => `${n.prefixo}.0/24`)
+      const onde = redes.length
+        ? ` Esta máquina procurou em ${redes.join(' e ')}.`
+        : ''
       estado = {
         status: 'erro', host: '', porta: DB_PORT, modoServidor: false,
-        mensagem: 'Não encontrei o servidor do Estrudena nesta rede. Verifique se o PC servidor está ligado ou informe o endereço manualmente.'
+        mensagem: 'Não encontrei o servidor do Estrudena nesta rede.' + onde +
+          ' Confira se o PC servidor está ligado e na mesma rede, ou informe o endereço dele abaixo.'
       }
       return estadoConexao()
     }

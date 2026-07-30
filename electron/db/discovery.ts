@@ -40,7 +40,7 @@ export async function ehServidorEstrudena(host: string, porta = DB_PORT): Promis
 }
 
 /** Endereços IPv4 das interfaces locais, sem loopback nem APIPA. */
-function interfacesLocais(): { ip: string; prefixo: string }[] {
+export function interfacesLocais(): { ip: string; prefixo: string }[] {
   const saida: { ip: string; prefixo: string }[] = []
   for (const lista of Object.values(os.networkInterfaces())) {
     for (const nic of lista ?? []) {

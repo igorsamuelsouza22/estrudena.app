@@ -20,6 +20,7 @@
     "teste:atualizacao": "node scripts/teste-atualizacao.mjs",
     "teste:fechar": "node scripts/teste-instalar-ao-fechar.mjs",
     "teste:progresso": "node scripts/teste-progresso.mjs",
+    "teste:descoberta": "node scripts/teste-descoberta.mjs",
     "capturas": "node scripts/capturar-telas.mjs capturas",
     "fetch:pg": "node scripts/fetch-postgres.mjs",
     "fetch:fontes": "node scripts/fetch-fonts.mjs",

@@ -262,7 +262,8 @@ um aviso e o cadastro segue à mão, como sempre.
 
 | Sintoma | O que fazer |
 | --- | --- |
-| Terminal não acha o servidor | Confirme que o PC servidor está ligado e na mesma rede. No servidor, abra Serviços do Windows e veja se `EstrudenaDB` está *Em execução*. |
+| Terminal não acha o servidor | A mensagem na tela diz em quais redes ele procurou (ex.: *procurou em 192.168.15.0/24*). Se o IP do servidor não começa com esses mesmos três números, as duas máquinas estão em redes diferentes — é o caso de uma no Wi-Fi e a outra no cabo. |
+| Não acha, e as duas estão na mesma rede | Provavelmente o firewall do servidor. Veja o item abaixo sobre rede "Pública". No servidor, confira também em Serviços do Windows se `EstrudenaDB` está *Em execução*. |
 | "Não encontrei o servidor" mesmo com tudo ligado | Digite o IP do servidor no campo que aparece. Descubra o IP rodando `ipconfig` no servidor. |
 | A instalação do servidor falhou | Leia `C:\ProgramData\Estrudena\instalacao.log` — a última linha diz onde parou. O programa em si já está instalado; dá para refazer só a parte do banco com o comando abaixo, num PowerShell **como administrador**, sem reinstalar nada. |
 | Um usuário não consegue entrar | Como administrador, confira em **Usuários** se a conta está *Ativa*, e redefina a senha. |
@@ -278,6 +279,32 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Program Files\Sistema Es
 É idempotente: se o cluster já existir, os dados são preservados e o roteiro só
 reconfere serviço, rede e firewall. O parâmetro `-SomenteBanco` refaz apenas a
 parte de dados, sem tocar em serviço nem firewall.
+
+### Servidores instalados até a versão 1.2.2
+
+Até a 1.2.2 a regra de firewall era criada só para os perfis *Domínio* e
+*Particular*. O Windows classifica como **Pública** toda rede em que ninguém
+respondeu ao aviso de descoberta, que é o caso da maioria das redes de
+escritório — e nessas o banco subia normalmente, escutava na rede e mesmo assim
+nenhum terminal o encontrava, porque o Windows descartava a conexão antes de ela
+chegar no PostgreSQL.
+
+Reinstalar o servidor com a versão nova já corrige. Para corrigir na hora, sem
+reinstalar, num PowerShell **como administrador** no PC servidor:
+
+```bash
+netsh advfirewall firewall delete rule name="Sistema Estrudena - PostgreSQL"; netsh advfirewall firewall add rule name="Sistema Estrudena - PostgreSQL" dir=in action=allow protocol=TCP localport=5432 profile=any remoteip=localsubnet
+```
+
+`remoteip=localsubnet` mantém a abertura restrita a quem está na mesma rede
+física; o `pg_hba.conf` também só atende faixas privadas e exige senha, então a
+porta não fica exposta à internet.
+
+Para conferir em qual perfil cada placa está:
+
+```bash
+powershell -NoProfile -Command "Get-NetConnectionProfile | Select-Object InterfaceAlias, NetworkCategory"
+```
 
 ---
 

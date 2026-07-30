@@ -394,24 +394,49 @@ if ($temDb -match '\b1\b') {
 EscreverHba 'scram-sha-256'
 Invocar $pgctl @('-D', $DataDir, 'reload') 'recarga da configuracao' | Out-Null
 
-# -------------------------------------------------------------------- firewall
+<#
+    Firewall.
+
+    A regra vale para TODOS os perfis, e não só Domain/Private. O Windows
+    classifica como "Pública" toda rede em que ninguém respondeu ao aviso de
+    descoberta — o que é o caso da maioria das redes de escritório em grupo de
+    trabalho. Com a regra restrita a Domain/Private, o banco subia certinho,
+    escutava em 0.0.0.0 e mesmo assim nenhum terminal o encontrava: o Windows
+    descartava a conexão antes de ela chegar no PostgreSQL.
+
+    O que mantém isto seguro não é o perfil, é o escopo: `LocalSubnet` só
+    aceita quem está na mesma rede física. Além disso o pg_hba.conf só atende
+    faixas privadas e exige senha. A porta não fica exposta à internet.
+#>
 if (-not $SomenteBanco) {
+  $regra = 'Sistema Estrudena - PostgreSQL'
+  $descricao = 'Permite que as outras maquinas da mesma rede acessem o banco do Sistema Estrudena.'
   try {
-    $regra = 'Sistema Estrudena - PostgreSQL'
     Get-NetFirewallRule -DisplayName $regra -ErrorAction SilentlyContinue |
       Remove-NetFirewallRule -ErrorAction SilentlyContinue
     New-NetFirewallRule -DisplayName $regra -Direction Inbound -Action Allow `
-      -Protocol TCP -LocalPort $Porta -Profile Domain,Private `
-      -Description 'Permite que as outras maquinas da rede acessem o banco do Sistema Estrudena.' | Out-Null
-    Escrever "Firewall liberado na porta $Porta (redes domestica e corporativa)."
+      -Protocol TCP -LocalPort $Porta -Profile Any -RemoteAddress LocalSubnet `
+      -Description $descricao | Out-Null
+    Escrever "Firewall liberado na porta $Porta para a rede local (todos os perfis)."
   } catch {
     # netsh como plano B: existe em qualquer Windows, inclusive edições sem o
     # módulo NetSecurity.
     Escrever "Cmdlet de firewall indisponivel ($($_.Exception.Message)); usando netsh."
+    Tentar 'netsh' @('advfirewall', 'firewall', 'delete', 'rule',
+                     "name=$regra") 'remocao da regra antiga' | Out-Null
     Tentar 'netsh' @('advfirewall', 'firewall', 'add', 'rule',
-                     'name=Sistema Estrudena - PostgreSQL', 'dir=in', 'action=allow',
-                     'protocol=TCP', "localport=$Porta", 'profile=domain,private') 'firewall via netsh' | Out-Null
+                     "name=$regra", 'dir=in', 'action=allow',
+                     'protocol=TCP', "localport=$Porta", 'profile=any',
+                     'remoteip=localsubnet') 'firewall via netsh' | Out-Null
   }
+
+  # O perfil de cada placa entra no log: quando um terminal não achar o
+  # servidor, é a primeira coisa que alguém vai querer conferir.
+  try {
+    Get-NetConnectionProfile -ErrorAction Stop | ForEach-Object {
+      Escrever "Rede '$($_.InterfaceAlias)': perfil $($_.NetworkCategory)."
+    }
+  } catch { }
 }
 
 # -------------------------------------------------------------------- conferência
