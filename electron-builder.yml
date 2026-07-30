@@ -20,6 +20,9 @@ extraResources:
     filter: ['**/*']
   - from: build/setup-servidor.ps1
     to: setup-servidor.ps1
+  # Roteiro de suporte: confere e corrige o servidor sem reinstalar nada.
+  - from: build/conferir-servidor.ps1
+    to: conferir-servidor.ps1
 
 win:
   target:
