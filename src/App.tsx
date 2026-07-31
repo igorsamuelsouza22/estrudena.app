@@ -268,7 +268,9 @@ function VerificarAtualizacao() {
         setNova(e.disponivel)
         setFase('nova')
       } else {
-        setRecado(`Esta máquina já está na versão ${e.versaoLocal}, a mais recente.`)
+        // Curto de proposito: divide a largura do cartao com o botao ao lado,
+        // e frase comprida ali so aparecia cortada.
+        setRecado(`Versão ${e.versaoLocal} — a mais recente.`)
         setFase('atual')
       }
     } catch (err) {
@@ -299,10 +301,19 @@ function VerificarAtualizacao() {
     }
   }
 
+  // `nowrap` + `flexShrink: 0`: sem isso o botao quebrava em duas linhas para
+  // dar espaco ao texto ao lado, dentro dos 400px do cartao.
   const link: CSSProperties = {
     border: 0, background: 'none', font: 'inherit', fontSize: 12, padding: 0,
-    color: 'var(--color-accent-700)', cursor: 'pointer', textDecoration: 'underline'
+    color: 'var(--color-accent-700)', cursor: 'pointer', textDecoration: 'underline',
+    whiteSpace: 'nowrap', flexShrink: 0
   }
+
+  // Depois da primeira conferencia o rotulo encurta: o texto do resultado
+  // ocupa o outro lado da linha, e os dois juntos nao cabem.
+  const rotulo = fase === 'verificando' ? 'verificando…'
+    : fase === 'ocioso' ? 'verificar atualização'
+    : 'conferir de novo'
 
   return (
     <div style={{
@@ -324,13 +335,15 @@ function VerificarAtualizacao() {
         </>
       ) : (
         <>
-          <span className="trunc" style={{ color: fase === 'erro' ? '#b3261e' : '#5f6368' }}>{recado}</span>
+          {/* `title`: mensagem de erro pode ser longa e sair truncada. */}
+          <span
+            className="trunc" title={recado || undefined}
+            style={{ color: fase === 'erro' ? '#b3261e' : '#5f6368' }}
+          >{recado}</span>
           <button
             type="button" style={{ ...link, opacity: fase === 'verificando' ? 0.6 : 1 }}
             disabled={fase === 'verificando'} onClick={() => void verificar()}
-          >
-            {fase === 'verificando' ? 'verificando…' : 'verificar atualização'}
-          </button>
+          >{rotulo}</button>
         </>
       )}
     </div>

@@ -63,6 +63,7 @@ npm run teste:fechar       # confere que a atualização baixada instala ao fech
 npm run teste:progresso    # baixa a release de verdade e amostra a barra na tela
 npm run teste:descoberta   # varredura sem servidor: confere a mensagem de erro
 npm run teste:config       # tela de configurações: textos do PDF e opção padrão
+npm run teste:rodape       # mede o rodapé do login: nada cortado nem quebrado
 ```
 
 ## Publicando uma versão nova

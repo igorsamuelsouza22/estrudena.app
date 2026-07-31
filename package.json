@@ -22,6 +22,7 @@
     "teste:progresso": "node scripts/teste-progresso.mjs",
     "teste:descoberta": "node scripts/teste-descoberta.mjs",
     "teste:config": "electron scripts/teste-configuracoes.cjs",
+    "teste:rodape": "electron scripts/teste-rodape-login.cjs",
     "capturas": "node scripts/capturar-telas.mjs capturas",
     "fetch:pg": "node scripts/fetch-postgres.mjs",
     "fetch:fontes": "node scripts/fetch-fonts.mjs",
