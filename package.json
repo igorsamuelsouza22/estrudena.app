@@ -1,6 +1,6 @@
 {
   "name": "estrudena",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "_comentario": "Descricao sem acentos de proposito: vai como argumento de linha de comando para o makensis e acaba nas propriedades do .exe, onde acentos chegam corrompidos.",
   "description": "Sistema Estrudena - Orcamento, Proposta e Separacao de Material",
   "author": "Estrudena",
