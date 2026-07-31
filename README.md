@@ -62,6 +62,7 @@ npm run teste:atualizacao  # publica uma versão e verifica o aviso e o download
 npm run teste:fechar       # confere que a atualização baixada instala ao fechar
 npm run teste:progresso    # baixa a release de verdade e amostra a barra na tela
 npm run teste:descoberta   # varredura sem servidor: confere a mensagem de erro
+npm run teste:config       # tela de configurações: textos do PDF e opção padrão
 ```
 
 ## Publicando uma versão nova
