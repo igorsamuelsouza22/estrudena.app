@@ -96,7 +96,7 @@ app.whenReady().then(async () => {
   console.log('  cliente escolhido: ' + escolheu)
 
   // Insere um item pelo modal do catalogo.
-  await js("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '+ Inserir item').click()")
+  await js("[...document.querySelectorAll('button')].find(b => b.textContent.trim() === '+ Inserir produto').click()")
   await espera(900)
   await js(\`(() => {
     const linha = document.querySelector('.dialog tbody tr')

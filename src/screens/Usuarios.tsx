@@ -1,4 +1,7 @@
-import { useState } from 'react'
+import { MatrizPermissoes } from './MatrizPermissoes'
+import { RECURSOS, pode } from '../permissoes'
+import { guardarLocal, lerLocal } from '../rascunhos'
+import { useState, useEffect } from 'react'
 import { chamar, ponte } from '../api'
 import { useApp } from '../store'
 import { Campo, Card, InputFicha, Tag } from '../ui'
@@ -7,22 +10,14 @@ import type { Perfil, Usuario } from '../shared/types'
 
 const PERFIS: Perfil[] = ['Administrador', 'Vendedor', 'Produção']
 
-const MATRIZ: [string, string][] = [
-  ['Visão geral', 'AVP'], ['Orçamento', 'AV'], ['Propostas', 'AVP'], ['Clientes', 'AV'],
-  ['Separação', 'AVP'], ['Itens e materiais', 'AV'], ['Custo e margem', 'AV'],
-  ['Relatórios', 'A'], ['Usuários', 'A'], ['Configurações', 'A']
-]
-
-const RESUMO_PERMISSOES: Record<Perfil, string> = {
-  Administrador: 'Tudo, inclusive custo, margem e configurações',
-  Vendedor: 'Orçamentos, propostas, clientes e cadastros',
-  Produção: 'Visão geral, propostas e separação — sem valores'
-}
-
 export function UsuariosTela() {
   const app = useApp()
   const { db } = app
-  const [form, setForm] = useState<(Usuario & { senha: string }) | null>(null)
+  const resumo=(perfil:Perfil)=>`${RECURSOS.filter(([id])=>pode(db.permissoes?.matriz,perfil,id)).length} permissões ativas · ${pode(db.permissoes?.matriz,perfil,'valores')?'com valores comerciais':'sem valores comerciais'}`
+  const chave = `estrudena:usuario:${app.user.id}`
+  const [form, setForm] = useState<(Usuario & { senha: string }) | null>(() => lerLocal(chave, null))
+  const [busca, setBusca] = useState('')
+  useEffect(() => { guardarLocal(chave, form ? { ...form, senha: '' } : null) }, [form, chave])
 
   const alternar = (u: Usuario) =>
     void app.gravar(
@@ -34,6 +29,7 @@ export function UsuariosTela() {
     if (!form) return
     if (!form.nome.trim()) return app.say('Informe o nome.')
     if (!form.usuario.trim()) return app.say('Informe o login.')
+    if (db.usuarios.some(u => u.id !== form.id && u.usuario === form.usuario)) return app.say('Este login já está em uso.')
     const novo = !db.usuarios.some(u => u.id === form.id)
     if (novo && form.senha.length < 4) return app.say('A senha precisa de pelo menos 4 caracteres.')
     const ok = await app.gravar(
@@ -45,6 +41,7 @@ export function UsuariosTela() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14, maxWidth: 1060 }}>
+      <input className="input" style={{ maxWidth: 420 }} aria-label="Buscar usuários" placeholder="Nome, login ou perfil" value={busca} onChange={e => setBusca(e.target.value)} />
       <Card
         titulo="Contas do sistema"
         direita={
@@ -64,7 +61,7 @@ export function UsuariosTela() {
               <th>Acesso concedido</th><th>Situação</th><th style={{ paddingRight: 11 }} />
             </tr></thead>
             <tbody>
-              {db.usuarios.map(u => (
+              {db.usuarios.filter(u => [u.nome, u.usuario, u.perfil].join(' ').toLowerCase().includes(busca.toLowerCase())).map(u => (
                 <tr key={u.id}>
                   <td style={{ paddingLeft: 11 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
@@ -79,7 +76,7 @@ export function UsuariosTela() {
                   <td style={{ fontFamily: 'var(--font-heading)', fontSize: 14 }}>{u.usuario}</td>
                   <td><Tag tipo={u.perfil === 'Administrador' ? 'accent' : 'accent-2'}>{u.perfil}</Tag></td>
                   <td style={{ fontSize: 12, color: 'color-mix(in srgb, var(--color-text) 60%, transparent)' }}>
-                    {RESUMO_PERMISSOES[u.perfil]}
+                    {resumo(u.perfil)}
                   </td>
                   <td><Tag tipo={u.ativo ? 'accent' : 'neutral'}>{u.ativo ? 'Ativo' : 'Inativo'}</Tag></td>
                   <td style={{ paddingRight: 11, textAlign: 'right', whiteSpace: 'nowrap' }}>
@@ -109,10 +106,11 @@ export function UsuariosTela() {
                 </>
               }>
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
+            <p className="notice" style={{ gridColumn: '1/-1', margin: 0 }}>{resumo(form.perfil)}. Dados da ficha são protegidos localmente; senhas não são armazenadas no rascunho.</p>
             <Campo label="Nome" span={2}><InputFicha valor={form.nome} onChange={v => setForm({ ...form, nome: v })} /></Campo>
             <Campo label="Login"><InputFicha valor={form.usuario} onChange={v => setForm({ ...form, usuario: v.toLowerCase().replace(/\s/g, '') })} /></Campo>
             <Campo label="Perfil">
-              <select className="input" style={{ minHeight: 28, fontSize: 13 }} value={form.perfil}
+              <select className="input" style={{ minHeight: 28, fontSize: 13 }} disabled={form.id===app.user.id} value={form.perfil}
                       onChange={e => setForm({ ...form, perfil: e.target.value as Perfil })}>
                 {PERFIS.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
@@ -126,27 +124,7 @@ export function UsuariosTela() {
         </Card>
       )}
 
-      <Card titulo="Matriz de permissões">
-        <table className="table" style={{ fontSize: 13 }}>
-          <thead><tr>
-            <th style={{ paddingLeft: 11 }}>Tela</th>
-            {PERFIS.map(p => <th key={p} style={{ textAlign: 'center' }}>{p}</th>)}
-          </tr></thead>
-          <tbody>
-            {MATRIZ.map(([tela, roles]) => (
-              <tr key={tela}>
-                <td style={{ paddingLeft: 11 }}>{tela}</td>
-                {['A', 'V', 'P'].map(k => (
-                  <td key={k} style={{
-                    textAlign: 'center', fontFamily: 'var(--font-heading)', fontSize: 14,
-                    color: roles.includes(k) ? 'var(--color-accent)' : 'color-mix(in srgb, var(--color-text) 28%, transparent)'
-                  }}>{roles.includes(k) ? '●' : '—'}</td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+      <MatrizPermissoes/>
     </div>
   )
 }

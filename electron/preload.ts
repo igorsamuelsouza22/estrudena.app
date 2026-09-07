@@ -21,8 +21,11 @@ const api = {
 
   login: (usuario: string, senha: string) => invoke('auth:login', usuario, senha),
 
+  logout: () => invoke('auth:logout'),
+  negocio: (cmd: unknown) => invoke('db:negocio', cmd),
+  salvarPermissoes: (matriz: unknown, versao: number) => invoke('db:permissoes', matriz, versao),
   carregar: () => invoke('db:carregar'),
-  salvarConfig: (cfg: unknown) => invoke('db:config', cfg),
+  salvarConfig: (cfg: unknown, anterior?: unknown) => invoke('db:config', cfg, anterior),
   salvarMaterial: (m: unknown) => invoke('db:material', m),
   salvarCor: (x: unknown) => invoke('db:cor', x),
   salvarAcessorio: (x: unknown) => invoke('db:acessorio', x),

@@ -100,7 +100,8 @@ app.whenReady().then(async () => {
     ['04-proposta', 'Proposta / PDF'],
     ['05-propostas', 'Propostas'],
     ['06-separacao', 'Separação'],
-    ['07-itens', 'Itens e materiais'],
+    ['07-produtos', 'Produtos'],
+    ['07b-materias-primas', 'Matérias-primas'],
     ['08-cores', 'Cores e pintura'],
     ['09-acessorios', 'Acessórios'],
     ['10-kits-ferragem', 'Kits de ferragem'],
@@ -122,7 +123,7 @@ app.whenReady().then(async () => {
   // Modal de inserir item, sobre a tela de orçamento.
   if (await clicarTexto(win, 'Orçamento') === 'ok') {
     await espera(800)
-    if (await clicarTexto(win, '+ Inserir item') === 'ok') {
+    if (await clicarTexto(win, '+ Inserir produto') === 'ok') {
       await foto(win, '17-modal-inserir-item')
     }
   }

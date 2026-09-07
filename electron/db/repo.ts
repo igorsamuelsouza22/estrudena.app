@@ -1,5 +1,12 @@
+import { lerPermissoes } from './permissoes'
+import { CAMPOS_CONFIG, errosConfig } from '../../src/configuracao'
 import type { PoolClient } from 'pg'
 import bcrypt from 'bcryptjs'
+import { carregarPedidos, evento, validarEmissao } from './negocio'
+import { necessidadesProducao } from '../../src/producao'
+import { catalogoDoPedido } from '../../src/historico'
+import { isDeepStrictEqual } from 'node:util'
+import { capturarPrecos, ampliarReferencia } from '../../src/historico'
 import { comCliente } from './pool'
 import { carregarExemplo } from './migrate'
 import type {
@@ -18,7 +25,7 @@ export async function carregarDB(): Promise<DB> {
   return comCliente(async c => {
     const [
       cfgQ, listasQ, coresQ, acesQ, kitsQ, kitItensQ, matsQ, matAcesQ,
-      kvQ, kvItensQ, instQ, cliQ, usrQ, orcQ, orcItensQ, sepQ, sepConfQ
+      kvQ, kvItensQ, instQ, cliQ, usrQ, orcQ, orcItensQ, sepQ, sepConfQ, composicaoQ
     ] = await Promise.all([
       c.query('SELECT * FROM config WHERE id'),
       c.query('SELECT categoria, valor FROM listas ORDER BY categoria, ordem, valor'),
@@ -36,7 +43,8 @@ export async function carregarDB(): Promise<DB> {
       c.query('SELECT * FROM orcamentos ORDER BY atualizado_em DESC'),
       c.query('SELECT * FROM orcamento_itens ORDER BY orcamento_id, ordem'),
       c.query('SELECT * FROM separacoes'),
-      c.query('SELECT * FROM separacao_conf ORDER BY orcamento_id, ordem')
+      c.query('SELECT * FROM separacao_conf ORDER BY orcamento_id, ordem'),
+      c.query('SELECT * FROM produto_materiais ORDER BY produto_id, ordem')
     ])
 
     const cfgRow = cfgQ.rows[0] ?? {}
@@ -76,6 +84,13 @@ export async function carregarDB(): Promise<DB> {
         .push({ matId: r.material_id, qtd: num(r.qtd) })
     }
 
+    const composicoes = new Map<string, Material['composicao']>()
+    for (const r of composicaoQ.rows) {
+      const itens = composicoes.get(r.produto_id) ?? []
+      itens.push({ materialId: r.material_id, qtd: num(r.qtd), base: r.base })
+      composicoes.set(r.produto_id, itens)
+    }
+
     const orcItens = new Map<string, Orcamento['itens']>()
     for (const r of orcItensQ.rows) {
       ;(orcItens.get(r.orcamento_id) ?? orcItens.set(r.orcamento_id, []).get(r.orcamento_id)!)
@@ -97,16 +112,19 @@ export async function carregarDB(): Promise<DB> {
     const separacoes: Record<string, Separacao> = {}
     for (const r of sepQ.rows) {
       separacoes[r.orcamento_id] = {
+        versao: r.versao, insumos: r.insumos ?? {},
         status: r.status, conf: sepConf.get(r.orcamento_id) ?? {},
         responsavel: r.responsavel ?? '', obs: r.obs ?? '',
         iniciado: r.iniciado ?? '', concluido: r.concluido ?? ''
       }
     }
 
-    return {
+    const dados: DB = {
       config,
       materiais: matsQ.rows.map((r): Material => ({
         id: r.id, cod: r.cod, desc: r.descricao, serie: r.serie, tipo: r.tipo,
+        atualizadoEm: r.atualizado_em?.toISOString(),
+        categoria: r.categoria, composicao: composicoes.get(r.id) ?? [],
         unidade: r.unidade, pesoUnit: num(r.peso_unit),
         larg: r.larg == null ? null : num(r.larg), alt: r.alt == null ? null : num(r.alt),
         preco: num(r.preco), fc: num(r.fc, 1),
@@ -145,6 +163,8 @@ export async function carregarDB(): Promise<DB> {
         criadoEm: r.criado_em instanceof Date ? r.criado_em.toISOString() : String(r.criado_em ?? '')
       })),
       orcamentos: orcQ.rows.map((r): Orcamento => ({
+        emitidaEm: r.emitida_em, validadeAte: r.validade_ate, referenciaPrecos: r.referencia_precos ?? undefined, atualizadoEm: r.atualizado_em?.toISOString(),
+        entregaPrevista: r.entrega_prevista, prioridade: r.prioridade,
         id: r.id, numero: r.numero, rev: r.rev, status: r.status, data: r.data,
         vendedor: r.vendedor, enviadaEm: r.enviada_em,
         clienteId: r.cliente_id ?? '', obra: r.obra, cidade: r.cidade, contato: r.contato,
@@ -167,6 +187,16 @@ export async function carregarDB(): Promise<DB> {
       tiposEquipe: listas.tiposEquipe ?? [],
       seq: num(cfgRow.seq)
     }
+    // Registros anteriores ganham uma referência dos valores disponíveis hoje.
+    // Não é possível reconstruir preços históricos que nunca foram armazenados.
+    for (const o of dados.orcamentos.filter(o => !o.referenciaPrecos)) {
+      const ref = capturarPrecos(dados, o.itens.map(it => it.matId))
+      const salvo = await c.query('UPDATE orcamentos SET referencia_precos=$2 WHERE id=$1 AND referencia_precos IS NULL RETURNING referencia_precos', [o.id, JSON.stringify(ref)])
+      o.referenciaPrecos = salvo.rows[0]?.referencia_precos ?? (await c.query('SELECT referencia_precos FROM orcamentos WHERE id=$1', [o.id])).rows[0]?.referencia_precos
+    }
+    dados.permissoes = await lerPermissoes(c)
+    await carregarPedidos(c, dados)
+    return dados
   })
 }
 
@@ -192,8 +222,19 @@ export async function autenticar(usuario: string, senha: string): Promise<LoginR
 
 // ------------------------------------------------------------------ gravação
 
-export async function salvarConfig(cfg: Config): Promise<void> {
-  await comCliente(c => c.query(
+export async function salvarConfig(cfg: Config, anterior?: Config): Promise<void> {
+  const erros = errosConfig(cfg)
+  if (Object.keys(erros).length) throw new Error(Object.values(erros).join(' '))
+  await comCliente(async c => {
+    await c.query('BEGIN')
+    try {
+      const linha = (await c.query('SELECT * FROM config WHERE id FOR UPDATE')).rows[0]
+      if (anterior) for (const f of CAMPOS_CONFIG) {
+        const coluna = f.id.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
+        const atual = f.unidade ? num(linha[coluna]) : linha[coluna]
+        if (!isDeepStrictEqual(atual, anterior[f.id])) throw new Error('As configurações foram alteradas em outra sessão. Seu rascunho foi mantido. Atualize os dados do servidor antes de salvar.')
+      }
+      await c.query(
     `UPDATE config SET
        preco_kg=$1, perda=$2, mo_kg=$3, mo_m2=$4, mo_hora=$5, mo_km=$6,
        markup=$7, imposto=$8, com1=$9, com2=$10,
@@ -208,29 +249,67 @@ export async function salvarConfig(cfg: Config): Promise<void> {
       cfg.validade, cfg.condPag, cfg.prazo,
       cfg.empresa, cfg.endereco, cfg.endereco2, cfg.fone, cfg.email, cfg.site,
       cfg.observacoes]
-  ))
+      )
+      await c.query('COMMIT')
+    } catch(e) { await c.query('ROLLBACK'); throw e }
+  })
 }
 
 export async function salvarMaterial(m: Material): Promise<void> {
+  if (!['produto', 'materia_prima'].includes(m.categoria)) throw new Error('Informe a classificação do cadastro.')
+  if (!m.cod.trim() || !m.desc.trim()) throw new Error('Informe código e descrição.')
+  if (!Number.isFinite(m.preco) || m.preco < 0 || !Number.isFinite(m.pesoUnit) || m.pesoUnit < 0) {
+    throw new Error('Custo e peso devem ser valores positivos ou zero.')
+  }
+  const composicao = m.composicao ?? []
+  if (m.categoria === 'materia_prima' && composicao.length) throw new Error('Somente produtos podem ter composição.')
+  if (new Set(composicao.map(it => it.materialId)).size !== composicao.length) throw new Error('Matéria-prima repetida na composição.')
+  for (const it of composicao) {
+    if (it.materialId === m.id || !Number.isFinite(it.qtd) || it.qtd <= 0 || !['UN', 'M2', 'ML'].includes(it.base)) {
+      throw new Error('Informe matéria-prima, quantidade maior que zero e base de consumo válidas.')
+    }
+  }
   await comCliente(async c => {
     await c.query('BEGIN')
     try {
+      const anterior = await c.query('SELECT categoria FROM materiais WHERE id = $1 FOR UPDATE', [m.id])
+      if (anterior.rows[0] && anterior.rows[0].categoria !== m.categoria) {
+        const uso = m.categoria === 'produto'
+          ? await c.query('SELECT 1 FROM produto_materiais WHERE material_id = $1 LIMIT 1', [m.id])
+          : await c.query(`SELECT 1 FROM orcamento_itens WHERE material_id = $1
+              UNION ALL SELECT 1 FROM kit_venda_itens WHERE material_id = $1
+              UNION ALL SELECT 1 FROM produto_materiais WHERE produto_id = $1 LIMIT 1`, [m.id])
+        if (uso.rows.length) throw new Error('Este cadastro está em uso. Crie um novo registro na outra categoria.')
+      }
+      if (composicao.length) {
+        const refs = await c.query('SELECT id, categoria FROM materiais WHERE id = ANY($1::text[]) FOR SHARE',
+          [composicao.map(it => it.materialId)])
+        if (refs.rows.length !== composicao.length || refs.rows.some(r => r.categoria !== 'materia_prima')) {
+          throw new Error('A composição deve conter somente matérias-primas cadastradas.')
+        }
+      }
       await c.query(
         `INSERT INTO materiais (
            id, cod, descricao, serie, tipo, unidade, peso_unit, larg, alt, preco, fc,
-           cor_id, kit_id, img, img_data, markup, imposto, comissao, mo_m2
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+           cor_id, kit_id, img, img_data, markup, imposto, comissao, mo_m2, categoria
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
          ON CONFLICT (id) DO UPDATE SET
            cod=EXCLUDED.cod, descricao=EXCLUDED.descricao, serie=EXCLUDED.serie,
            tipo=EXCLUDED.tipo, unidade=EXCLUDED.unidade, peso_unit=EXCLUDED.peso_unit,
            larg=EXCLUDED.larg, alt=EXCLUDED.alt, preco=EXCLUDED.preco, fc=EXCLUDED.fc,
            cor_id=EXCLUDED.cor_id, kit_id=EXCLUDED.kit_id, img=EXCLUDED.img,
            img_data=EXCLUDED.img_data, markup=EXCLUDED.markup, imposto=EXCLUDED.imposto,
-           comissao=EXCLUDED.comissao, mo_m2=EXCLUDED.mo_m2`,
+           comissao=EXCLUDED.comissao, mo_m2=EXCLUDED.mo_m2, categoria=EXCLUDED.categoria`,
         [m.id, m.cod, m.desc, m.serie, m.tipo, m.unidade, m.pesoUnit, m.larg, m.alt,
           m.preco, m.fc, m.corId || null, m.kitId || null, m.img, m.imgData,
-          m.markup, m.imposto, m.comissao, m.moM2]
+          m.markup, m.imposto, m.comissao, m.moM2, m.categoria]
       )
+      await c.query('UPDATE materiais SET atualizado_em=now() WHERE id=$1', [m.id])
+      await c.query('DELETE FROM produto_materiais WHERE produto_id = $1', [m.id])
+      for (const [ordem, it] of composicao.entries()) {
+        await c.query('INSERT INTO produto_materiais (produto_id, material_id, qtd, base, ordem) VALUES ($1,$2,$3,$4,$5)',
+          [m.id, it.materialId, it.qtd, it.base, ordem])
+      }
       await c.query('DELETE FROM material_acessorios WHERE material_id = $1', [m.id])
       for (let i = 0; i < m.aces.length; i++) {
         await c.query(
@@ -291,6 +370,7 @@ export async function salvarKitVenda(k: KitVenda): Promise<void> {
   await comCliente(async c => {
     await c.query('BEGIN')
     try {
+      await validarItensComerciais(c, k.itens)
       await c.query(
         `INSERT INTO kits_venda (id, cod, nome, descricao) VALUES ($1,$2,$3,$4)
          ON CONFLICT (id) DO UPDATE SET cod=EXCLUDED.cod, nome=EXCLUDED.nome,
@@ -307,6 +387,31 @@ export async function salvarKitVenda(k: KitVenda): Promise<void> {
       await c.query('COMMIT')
     } catch (e) { await c.query('ROLLBACK'); throw e }
   })
+}
+
+/** Bloqueia insumos em novas vendas, inclusive quando a chamada chega por IPC.
+ * Propostas antigas e suas revisões podem manter os insumos que já continham. */
+async function validarItensComerciais(c: PoolClient, itens: { matId: string; qtd: number }[], origem?: Orcamento): Promise<void> {
+  if (itens.some(it => !Number.isFinite(it.qtd) || it.qtd <= 0)) throw new Error('As quantidades devem ser maiores que zero.')
+  const ids = [...new Set(itens.map(it => it.matId))]
+  if (!ids.length) return
+  const refs = await c.query('SELECT id, cod, categoria FROM materiais WHERE id = ANY($1::text[]) FOR SHARE', [ids])
+  if (refs.rows.length !== ids.length) throw new Error('Há um produto que não está mais cadastrado.')
+  const insumos = refs.rows.filter(r => r.categoria !== 'produto')
+  if (!insumos.length) return
+  const anteriores = origem ? await c.query(
+    `SELECT material_id, SUM(qtd) AS qtd, COUNT(*) AS linhas FROM orcamento_itens
+     WHERE orcamento_id = COALESCE(
+       (SELECT id FROM orcamentos WHERE id = $1),
+       (SELECT id FROM orcamentos WHERE $1 = '' AND numero = $2 ORDER BY atualizado_em DESC LIMIT 1)
+     ) GROUP BY material_id`, [origem.id, origem.numero]) : { rows: [] }
+  for (const m of insumos) {
+    const linhas = itens.filter(it => it.matId === m.id)
+    const anterior = anteriores.rows.find(r => r.material_id === m.id)
+    if (!anterior || linhas.length > num(anterior.linhas) || linhas.reduce((total, it) => total + it.qtd, 0) > num(anterior.qtd) + 1e-8) {
+      throw new Error(`${m.cod} é uma matéria-prima. Adicione um produto pronto ao orçamento ou ao kit de venda.`)
+    }
+  }
 }
 
 export async function salvarInstalador(x: Instalador): Promise<void> {
@@ -334,8 +439,21 @@ export async function salvarCliente(x: Cliente): Promise<void> {
   ))
 }
 
-export async function salvarUsuario(u: Usuario & { senha?: string }): Promise<void> {
+export async function salvarUsuario(u: Usuario & { senha?: string }, autorId?: string): Promise<void> {
+  if(!u.nome?.trim()||!u.usuario?.trim()||!['Administrador','Vendedor','Produção'].includes(u.perfil)||typeof u.ativo!=='boolean') throw new Error('Informe nome, login, perfil e situação válidos.')
+  if(u.senha && u.senha.length<4) throw new Error('A senha precisa de pelo menos 4 caracteres.')
   await comCliente(async c => {
+    await c.query('BEGIN')
+    try {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('estrudena:usuarios'))")
+    const anterior=(await c.query('SELECT perfil,ativo FROM usuarios WHERE id=$1 FOR UPDATE',[u.id])).rows[0]
+    if(!anterior&&!u.senha) throw new Error('Informe uma senha para o novo usuário.')
+    if(u.id===autorId&&(!u.ativo||anterior?.perfil!==u.perfil)) throw new Error('Você não pode desativar a própria conta nem alterar o próprio perfil.')
+    if(anterior?.perfil==='Administrador'&&anterior.ativo&&(!u.ativo||u.perfil!=='Administrador')) {
+      const admins=(await c.query("SELECT count(*) AS n FROM usuarios WHERE perfil='Administrador' AND ativo")).rows[0].n
+      if(Number(admins)<=1)throw new Error('Mantenha pelo menos um administrador ativo.')
+    }
+    if((await c.query('SELECT 1 FROM usuarios WHERE lower(usuario)=lower($1) AND id<>$2',[u.usuario.trim(),u.id])).rowCount)throw new Error('Este login já está em uso.')
     if (u.senha) {
       const hash = bcrypt.hashSync(u.senha, 10)
       await c.query(
@@ -351,6 +469,8 @@ export async function salvarUsuario(u: Usuario & { senha?: string }): Promise<vo
         [u.id, u.nome, u.usuario, u.perfil, u.ativo]
       )
     }
+    await c.query('COMMIT')
+    }catch(e){await c.query('ROLLBACK');throw e}
   })
 }
 
@@ -364,10 +484,40 @@ async function proximoNumero(c: PoolClient): Promise<string> {
 }
 
 /** Grava o orçamento inteiro (cabeçalho + itens). Gera número na primeira gravação. */
-export async function salvarOrcamento(o: Orcamento): Promise<Orcamento> {
+export async function salvarOrcamento(o: Orcamento, autor = 'Sistema'): Promise<Orcamento> {
+  const catalogo = await carregarDB()
+  const original = catalogo.orcamentos.find(x => x.id === (o.id || o.origemId))
+  if (o.id && !original) throw new Error('Proposta não encontrada.')
+  if (!['Rascunho', 'Proposta'].includes(o.status)) throw new Error('Use as ações do fluxo para enviar, aprovar ou recusar uma proposta.')
+  if (original && o.id && original.status === 'Substituída') throw new Error('Esta proposta foi alterada em outra sessão. Abra a revisão mais recente; seu rascunho foi mantido.')
+  if (original && o.id && original.status !== 'Rascunho') throw new Error('Esta revisão foi emitida. Crie uma revisão para editar.')
+  const conteudo = (x: Orcamento) => {
+    const {id, origemId, numero, rev, status, atualizadoEm, rascunhoId, emitidaEm, validadeAte, enviadaEm, ...dados} = x
+    return dados
+  }
+  o = { ...o, numero: original?.numero || o.numero, referenciaPrecos: o.referenciaPrecos ? ampliarReferencia(catalogo, o) : capturarPrecos(catalogo, o.itens.map(it => it.matId)) }
+  if (o.status === 'Proposta') validarEmissao(catalogo, o)
   return comCliente(async c => {
     await c.query('BEGIN')
     try {
+      if (original) {
+        await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [original.numero])
+        const anterior = (await c.query('SELECT atualizado_em FROM orcamentos WHERE id=$1 FOR UPDATE', [original.id])).rows[0]
+        if (!anterior || o.atualizadoEm !== anterior.atualizado_em.toISOString()) throw new Error('Esta proposta foi alterada em outra sessão. Seu rascunho foi mantido. Abra a versão atual antes de salvar.')
+        const ultima = (await c.query("SELECT id FROM orcamentos WHERE numero=$1 ORDER BY regexp_replace(rev,'[^0-9]','','g')::integer DESC LIMIT 1", [original.numero])).rows[0]
+        if (o.id && ultima?.id !== o.id) throw new Error('Já existe uma revisão mais recente. Seu rascunho foi mantido; abra a versão atual.')
+        if (!isDeepStrictEqual(conteudo(original), conteudo(o)) || o.origemId) o = { ...o, id: '' }
+        else if (o.status === original.status) { await c.query('COMMIT'); return original }
+      }
+      if (!o.id) {
+        if (o.numero && o.numero !== '(automático)') {
+          await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [o.numero])
+          const revisoes = (await c.query('SELECT rev FROM orcamentos WHERE numero=$1', [o.numero])).rows
+          if (revisoes.length && !original) throw new Error('Informe a revisão de origem para editar uma proposta existente.')
+          o = { ...o, rev: 'rev' + (Math.max(0, ...revisoes.map(r => Number(r.rev.replace(/\D/g, '')) || 0)) + 1) }
+        } else o = { ...o, rev: 'rev1' }
+      }
+      await validarItensComerciais(c, o.itens, o)
       let id = o.id
       let numero = o.numero
       if (!id) {
@@ -413,16 +563,45 @@ export async function salvarOrcamento(o: Orcamento): Promise<Orcamento> {
             it.perfil, it.vidro, it.detalhe, it.markup, it.fc]
         )
       }
+      const atualizado = await c.query('UPDATE orcamentos SET referencia_precos=$2, entrega_prevista=$3, prioridade=$4 WHERE id=$1 RETURNING atualizado_em', [id, JSON.stringify(o.referenciaPrecos), o.entregaPrevista ?? '', o.prioridade ?? 'Normal'])
+      const emitidaEm = o.status === 'Proposta' ? new Date().toISOString() : ''
+      const validadeAte = emitidaEm ? new Date(Date.now() + (o.referenciaPrecos?.config.validade || catalogo.config.validade) * 86400000).toISOString().slice(0,10) : ''
+      await c.query('UPDATE orcamentos SET emitida_em=$2,validade_ate=$3 WHERE id=$1', [id, emitidaEm, validadeAte])
+      if (original && id !== original.id && !['Aprovado','Substituída'].includes(original.status)) await c.query("UPDATE orcamentos SET status='Substituída',atualizado_em=clock_timestamp() WHERE id=$1", [original.id])
+      await evento(c, numero, autor, 'Revisão salva', `${numero}.${o.rev} · ${o.status}`)
       await c.query('COMMIT')
-      return { ...o, id, numero }
+      return { ...o, origemId: undefined, emitidaEm, validadeAte, id, numero, atualizadoEm: atualizado.rows[0].atualizado_em.toISOString() }
     } catch (e) { await c.query('ROLLBACK'); throw e }
   })
 }
 
-export async function salvarSeparacao(orcId: string, s: Separacao): Promise<void> {
+export async function salvarSeparacao(orcId: string, s: Separacao, autor = 'Sistema'): Promise<void> {
+  const db = await carregarDB()
+  const p = db.pedidos?.find(x => x.orcamentoId === orcId)
+  if (!p || !['Materiais pendentes','Em separação'].includes(p.etapa) || ['Cancelado','Concluído'].includes(p.status)) throw new Error('A separação exige um pedido liberado nesta revisão.')
+  if (!['Pendente','Em separação','Concluída'].includes(s.status)) throw new Error('Situação de separação inválida.')
+  const anterior = db.separacoes[orcId]
+  if (s.status === 'Concluída' && anterior?.status !== 'Em separação') throw new Error('Inicie a separação antes de concluir.')
+  if (s.status !== 'Pendente' && !s.responsavel.trim()) throw new Error('Informe o conferente.')
+  const o = p.proposta
+  const {materiais,ferragens} = necessidadesProducao(db, o, p)
+  const limites: Record<string, number> = Object.fromEntries([
+    ...materiais.map(m=>['mp:'+m.material.id,m.qtd]), ...ferragens.map(a=>['ac:'+a.a!.id,a.qtd])
+  ])
+  const validar = (valores: Record<string,number>, max: Record<string,number>) => {
+    if (Object.entries(valores).some(([k,v])=>!(k in max) || !Number.isFinite(v) || v < 0 || v > max[k] + .00001)) throw new Error('Quantidade conferida inválida ou acima do pedido.')
+    if (s.status === 'Concluída' && Object.entries(max).some(([k,v])=>(valores[k] || 0) + .00001 < v)) throw new Error('Confira todos os produtos e insumos antes de concluir.')
+  }
+  validar(s.conf, Object.fromEntries(o.itens.map((it,i)=>[i,it.qtd])))
+  validar(s.insumos || {}, limites)
   await comCliente(async c => {
     await c.query('BEGIN')
     try {
+      const pr = (await c.query('SELECT versao FROM pedidos_venda WHERE id=$1 FOR UPDATE', [p.id])).rows[0]
+      if (pr.versao !== p.versao) throw new Error('O pedido mudou. Atualize antes de conferir.')
+      const sr = (await c.query('SELECT versao FROM separacoes WHERE orcamento_id=$1 FOR UPDATE', [orcId])).rows[0]
+      if ((sr?.versao || 0) !== (s.versao || 0)) throw new Error('Outra pessoa alterou a conferência. Seu rascunho foi mantido. Atualize a tela.')
+
       await c.query(
         `INSERT INTO separacoes (orcamento_id, status, responsavel, obs, iniciado, concluido)
          VALUES ($1,$2,$3,$4,$5,$6)
@@ -431,6 +610,7 @@ export async function salvarSeparacao(orcId: string, s: Separacao): Promise<void
            iniciado=EXCLUDED.iniciado, concluido=EXCLUDED.concluido`,
         [orcId, s.status, s.responsavel, s.obs, s.iniciado, s.concluido]
       )
+      await c.query('UPDATE separacoes SET insumos=$2 WHERE orcamento_id=$1', [orcId, JSON.stringify(s.insumos ?? {})])
       await c.query('DELETE FROM separacao_conf WHERE orcamento_id = $1', [orcId])
       for (const [ordem, qtd] of Object.entries(s.conf)) {
         if (!qtd) continue
@@ -439,17 +619,24 @@ export async function salvarSeparacao(orcId: string, s: Separacao): Promise<void
           [orcId, parseInt(ordem, 10), qtd]
         )
       }
+
+      await c.query('UPDATE separacoes SET versao=versao+1 WHERE orcamento_id=$1', [orcId])
+      p.etapa = 'Em separação'; p.status = 'Em execução'; p.versao++
+      await c.query('UPDATE pedidos_venda SET dados=$2,versao=$3 WHERE id=$1', [p.id, JSON.stringify(p), p.versao])
+      await evento(c, p.numero, autor, 'Separação', `${s.status}. Conferente: ${s.responsavel}. ${s.obs}. Produtos: ${JSON.stringify(s.conf)}. Insumos: ${JSON.stringify(s.insumos || {})}`)
       await c.query('COMMIT')
     } catch (e) { await c.query('ROLLBACK'); throw e }
   })
 }
 
-export async function excluir(tabela: string, id: string): Promise<void> {
+export async function excluir(tabela: string, id: string, autorId?: string): Promise<void> {
   const permitidas: Record<string, string> = {
     materiais: 'materiais', cores: 'cores', acessorios: 'acessorios', kits: 'kits',
     kitsVenda: 'kits_venda', instaladores: 'instaladores', clientes: 'clientes',
     orcamentos: 'orcamentos', usuarios: 'usuarios'
   }
+  if (tabela === 'usuarios') throw new Error('Desative a conta para preservar o histórico de usuários.')
+  if (tabela === 'orcamentos') throw new Error('Revisões salvas fazem parte do histórico e não podem ser excluídas.')
   const t = permitidas[tabela]
   if (!t) throw new Error(`Tabela desconhecida: ${tabela}`)
   await comCliente(c => c.query(`DELETE FROM ${t} WHERE id = $1`, [id]))

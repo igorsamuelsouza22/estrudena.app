@@ -1,3 +1,4 @@
+import { propostasVigentes } from '../historico'
 import { useMemo, useRef, useState } from 'react'
 import { chamar, ponte } from '../api'
 import { useApp } from '../store'
@@ -36,7 +37,7 @@ export function Clientes() {
     return db.clientes.filter(c => [c.nome, c.razao, c.cidade, c.contato, c.cnpj].join(' ').toLowerCase().includes(t))
   }, [db.clientes, cad.filtro])
 
-  const propostas = f ? db.orcamentos.filter(o => o.clienteId === f.id) : []
+  const propostas = f ? propostasVigentes(db.orcamentos).filter(o => o.clienteId === f.id) : []
   const existe = f ? db.clientes.some(c => c.id === f.id) : false
 
   /**
@@ -45,13 +46,14 @@ export function Clientes() {
    * explica e o cadastro segue à mão, como sempre foi.
    */
   const buscarPorCnpj = async (valor: string) => {
+    const clienteId = f?.id
     const digitos = valor.replace(/\D/g, '')
-    if (digitos.length !== 14 || digitos === ultimoCnpj.current) return
-    ultimoCnpj.current = digitos
+    if (digitos.length !== 14 || clienteId + digitos === ultimoCnpj.current) return
+    ultimoCnpj.current = clienteId + digitos
     setAvisoCnpj('Consultando a Receita…')
     try {
       const d = await chamar(ponte().consultarCnpj(digitos))
-      cad.setForm(atual => atual && {
+      cad.setForm(atual => !atual || atual.id !== clienteId || atual.cnpj.replace(/\D/g, '') !== digitos ? atual : {
         ...atual,
         cnpj: d.cnpj,
         // Só preenche o que estiver vazio: nada do que o usuário digitou se perde.
@@ -69,16 +71,16 @@ export function Clientes() {
   }
 
   return (
-    <ListaFicha
+    <ListaFicha cad={cad} selecionado={app.registroId}
       filtro={cad.filtro} onFiltro={cad.setFiltro}
       placeholder="Filtrar cliente, cidade ou contato"
       resumo={`${lista.length} de ${db.clientes.length} clientes`}
       rotuloNovo="+ novo cliente" onNovo={cad.criarNovo}
       lista={lista.map(c => {
-        const n = db.orcamentos.filter(o => o.clienteId === c.id).length
+        const n = propostasVigentes(db.orcamentos).filter(o => o.clienteId === c.id).length
         return (
           <div key={c.id} onClick={() => cad.selecionar(c)}
-               className={'linha' + (f?.id === c.id ? ' sel' : '')} style={{ height: 46 }}>
+               tabIndex={0} role="button" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }} className={'linha' + (f?.id === c.id ? ' sel' : '')} style={{ height: 46 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="trunc" style={{ fontSize: 13, lineHeight: 1.2 }}>{c.nome}</div>
               <div className="trunc" style={{ fontSize: 11, letterSpacing: '.02em', color: 'color-mix(in srgb, var(--color-text) 42%, transparent)' }}>
@@ -94,20 +96,23 @@ export function Clientes() {
       ficha={f ? (
         <div className="card">
           <FichaHead titulo={existe ? f.nome || 'Cliente' : 'Novo cliente'}>
+            {existe && <button className="btn btn-secondary" onClick={() => app.novoOrc(f.id)}>+ Novo orçamento</button>}
             {existe && !propostas.length && (
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
-                      onClick={() => void app.gravar(() => chamar(ponte().excluir('clientes', f.id)), 'Cliente excluído').then(() => cad.setForm(null))}>
+              <button hidden={!app.pode('excluir')} className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
+                      onClick={() => void app.gravar(() => chamar(ponte().excluir('clientes', f.id)), 'Cliente excluído').then(ok => { if (ok) cad.setForm(null) })}>
                 excluir
               </button>
             )}
             <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }}
                     onClick={() => {
                       if (!f.nome.trim()) return app.say('Informe o nome comercial.')
+                      if (!cad.validar()) return
                       void app.gravar(() => chamar(ponte().salvarCliente(f)), 'Cliente salvo')
                     }}>Salvar cliente</button>
           </FichaHead>
 
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
+            {db.clientes.some(c => c.id !== f.id && ((f.cnpj.replace(/\D/g, '').length === 14 && c.cnpj.replace(/\D/g, '') === f.cnpj.replace(/\D/g, '')) || (f.nome.trim().length > 2 && c.nome.trim().toLowerCase() === f.nome.trim().toLowerCase()))) && <div className="notice warning" style={{ gridColumn: '1/-1' }}>Possível duplicidade: já existe um cliente com este nome ou CNPJ. Confira a lista antes de salvar.</div>}
             <Campo label="CNPJ" nota={avisoCnpj}>
               <InputFicha
                 valor={f.cnpj}
@@ -131,7 +136,7 @@ export function Clientes() {
               <div style={{ fontSize: 11, letterSpacing: '.02em', color: muted45 }}>Histórico</div>
               <div style={{ fontSize: 13, paddingTop: 2 }}>
                 {propostas.length
-                  ? propostas.map(o => `${o.numero} ${o.rev} · ${o.status}`).join(' — ')
+                  ? propostas.map(o => <button className="search-result" key={o.id} onClick={() => app.abrirOrc(o)}><strong>{o.numero} {o.rev}</strong> · {o.obra || 'Sem obra'} · {o.status}</button>)
                   : 'Nenhuma proposta vinculada.'}
               </div>
               {!!propostas.length && (

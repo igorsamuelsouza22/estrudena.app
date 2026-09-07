@@ -1,4 +1,6 @@
+import { useFocoModal } from '../ui'
 import { useMemo, useState } from 'react'
+import { ehProduto, kitSomenteProdutos } from '../catalogo'
 import { fm, fn, num } from '../format'
 import { useApp } from '../store'
 import { Seg, Vazio, muted45 } from '../ui'
@@ -13,6 +15,7 @@ export function PickerItens(p: {
   onInserir: (matId: string, qtd: number) => void
   jaNaGrade: OrcItem[]
 }) {
+  const modalRef = useFocoModal(p.onFechar)
   const app = useApp()
   const { db, motor } = app
   const [modo, setModo] = useState<'itens' | 'kits'>('itens')
@@ -27,21 +30,24 @@ export function PickerItens(p: {
   }, [p.jaNaGrade])
 
   const termo = busca.trim().toLowerCase()
+  const produtos = useMemo(() => db.materiais.filter(ehProduto), [db.materiais])
+  const tipos = useMemo(() => [...new Set(produtos.map(m => m.tipo))].filter(Boolean), [produtos])
 
-  const lista = useMemo(() => db.materiais.filter(m => {
+  const lista = useMemo(() => produtos.filter(m => {
     if (tipo !== '__todos' && m.tipo !== tipo) return false
     if (!termo) return true
     return [m.cod, m.desc, m.tipo, m.serie].join(' ').toLowerCase().includes(termo)
-  }), [db.materiais, tipo, termo])
+  }), [produtos, tipo, termo])
 
   const kits = useMemo(() => db.kitsVenda.filter(k => {
+    if (!kitSomenteProdutos(k, db.materiais)) return false
     if (!termo) return true
     return [k.cod, k.nome, k.descricao].join(' ').toLowerCase().includes(termo)
-  }), [db.kitsVenda, termo])
+  }), [db.kitsVenda, db.materiais, termo])
 
   const inserirKit = (kitId: string) => {
     const k = db.kitsVenda.find(x => x.id === kitId)
-    if (!k) return
+    if (!k || !kitSomenteProdutos(k, db.materiais)) return
     for (const it of k.itens) p.onInserir(it.matId, it.qtd * qtd)
     app.say(`${k.cod} lançado na grade`)
   }
@@ -53,7 +59,7 @@ export function PickerItens(p: {
 
   return (
     <div className="dialog-backdrop noprint" style={{ zIndex: 60 }} onMouseDown={e => { if (e.target === e.currentTarget) p.onFechar() }}>
-      <div className="dialog" style={{
+      <div ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Inserir produto" className="dialog" style={{
         width: 'min(920px, 94vw)', maxHeight: '80vh', display: 'flex', flexDirection: 'column',
         overflow: 'hidden', animation: 'eIn .16s ease'
       }}>
@@ -61,10 +67,10 @@ export function PickerItens(p: {
           flex: 'none', display: 'flex', alignItems: 'center', gap: 12, height: 56,
           padding: '0 20px', borderBottom: '1px solid var(--color-divider)'
         }}>
-          <span style={{ fontSize: 16, color: '#202124' }}>Inserir item no orçamento</span>
+          <span style={{ fontSize: 16, color: '#202124' }}>Inserir produto no orçamento</span>
           <div style={{ flex: 1 }} />
           <span className="tnum" style={{ fontSize: 12, color: '#5f6368' }}>
-            {modo === 'itens' ? `${lista.length} de ${db.materiais.length} itens` : `${kits.length} kits de venda`}
+            {modo === 'itens' ? `${lista.length} de ${produtos.length} produtos` : `${kits.length} kits de venda`}
           </span>
           <button className="btn btn-ghost" onClick={p.onFechar}>Fechar</button>
         </div>
@@ -75,7 +81,7 @@ export function PickerItens(p: {
         }}>
           <Seg
             style={{ background: 'var(--color-bg)' }} padding="4px 11px"
-            opcoes={[{ id: 'itens', label: 'Itens do catálogo' }, { id: 'kits', label: 'Kits de venda' }]}
+            opcoes={[{ id: 'itens', label: 'Produtos' }, { id: 'kits', label: 'Kits de venda' }]}
             valor={modo} onPick={setModo}
           />
           <input
@@ -98,7 +104,7 @@ export function PickerItens(p: {
             <div style={{ flex: 'none', padding: '8px 12px', borderBottom: '1px solid var(--color-divider)' }}>
               <Seg
                 style={{ flexWrap: 'wrap' }}
-                opcoes={[{ id: '__todos', label: 'Todos' }, ...db.tipos.map(t => ({ id: t, label: t }))]}
+                opcoes={[{ id: '__todos', label: 'Todos' }, ...tipos.map(t => ({ id: t, label: t }))]}
                 valor={tipo} onPick={setTipo}
               />
             </div>
@@ -130,7 +136,7 @@ export function PickerItens(p: {
                         <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap', fontSize: 13 }}>
                           {m.larg ?? 0} × {m.alt ?? 0}
                         </td>
-                        <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fm(motor.custoBase(m))}</td>
+                        <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fm(motor.custoNaMedida(m))}</td>
                         <td style={{ paddingRight: 12, textAlign: 'right', whiteSpace: 'nowrap' }}>
                           <span style={{ fontSize: 12, color: 'var(--color-accent-700)', paddingRight: 7 }}>
                             {n ? `${n}× na grade` : ''}
@@ -142,7 +148,7 @@ export function PickerItens(p: {
                   })}
                 </tbody>
               </table>
-              {!lista.length && <Vazio padding="34px 12px">Nenhum item do catálogo bate com essa busca.</Vazio>}
+              {!lista.length && <Vazio padding="34px 12px">Nenhum produto encontrado. Cadastre os itens de venda em Produtos.</Vazio>}
             </div>
           </>
         )}
@@ -191,7 +197,7 @@ export function PickerItens(p: {
           background: 'var(--color-surface)', borderTop: '1px solid var(--color-divider)'
         }}>
           <span style={{ fontSize: 12, letterSpacing: '.02em', color: muted45 }}>
-            A grade continua atualizando atrás — insira vários e feche ao final
+            Produtos para venda. As matérias-primas entram pela composição de cada produto.
           </span>
           <div style={{ flex: 1 }} />
           <button className="btn btn-primary" style={{ minHeight: 26, padding: '3px 12px', fontSize: 13 }} onClick={p.onFechar}>Concluir</button>

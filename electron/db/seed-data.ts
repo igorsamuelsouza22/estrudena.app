@@ -6,6 +6,7 @@
 
 export interface SeedMaterial {
   id: string; cod: string; desc: string; serie: string; tipo: string
+  categoria: 'produto' | 'materia_prima'
   unidade: 'KG' | 'M2' | 'UN' | 'ML'
   pesoUnit: number; larg: number | null; alt: number | null; preco: number; fc: number
   corId: string; kitId: string; img: string
@@ -17,7 +18,7 @@ const AL = (
   cod: string, desc: string, peso: number, larg: number, alt: number,
   serie: string, kitId: string, img: string
 ): SeedMaterial => ({
-  id: cod, cod, desc, serie, tipo: 'ALUMÍNIO', unidade: 'KG',
+  id: cod, cod, desc, serie, tipo: 'ALUMÍNIO', unidade: 'KG', categoria: 'produto',
   pesoUnit: peso, larg, alt, preco: 0, fc: 1,
   corId: 'RAL9005', kitId, img,
   markup: 52, imposto: 7, comissao: 5, moM2: 170.24, aces: []
@@ -27,7 +28,7 @@ const SUP = (
   cod: string, desc: string, tipo: string, preco: number,
   larg: number, alt: number, markup = 45, moM2 = 95
 ): SeedMaterial => ({
-  id: cod, cod, desc, serie: '—', tipo, unidade: 'M2',
+  id: cod, cod, desc, serie: '—', tipo, unidade: 'M2', categoria: 'materia_prima',
   pesoUnit: 0, larg, alt, preco, fc: 1,
   corId: '', kitId: '', img: '',
   markup, imposto: 7, comissao: 5, moM2, aces: []

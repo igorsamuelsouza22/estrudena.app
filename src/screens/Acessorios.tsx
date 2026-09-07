@@ -30,14 +30,14 @@ export function Acessorios() {
   const existe = f ? db.acessorios.some(a => a.id === f.id) : false
 
   return (
-    <ListaFicha
+    <ListaFicha cad={cad} selecionado={app.registroId}
       filtro={cad.filtro} onFiltro={cad.setFiltro}
       placeholder="Filtrar acessório, grupo ou fornecedor"
       resumo={`${lista.length} de ${db.acessorios.length} acessórios`}
       rotuloNovo="+ novo acessório" onNovo={cad.criarNovo}
       lista={lista.map(a => (
         <div key={a.id} onClick={() => cad.selecionar(a)}
-             className={'linha' + (f?.id === a.id ? ' sel' : '')} style={{ height: 40 }}>
+             tabIndex={0} role="button" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }} className={'linha' + (f?.id === a.id ? ' sel' : '')} style={{ height: 40 }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: 14, width: 56, flex: 'none' }}>{a.cod}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="trunc" style={{ fontSize: 13, lineHeight: 1.2 }}>{a.nome}</div>
@@ -54,20 +54,21 @@ export function Acessorios() {
         <div className="card">
           <FichaHead titulo={existe ? `Acessório ${f.cod}` : 'Novo acessório'}>
             {existe && !emUso && (
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
-                      onClick={() => void app.gravar(() => chamar(ponte().excluir('acessorios', f.id)), 'Acessório excluído').then(() => cad.setForm(null))}>
+              <button hidden={!app.pode('excluir')} className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
+                      onClick={() => void app.gravar(() => chamar(ponte().excluir('acessorios', f.id)), 'Acessório excluído').then(ok => { if (ok) cad.setForm(null) })}>
                 excluir
               </button>
             )}
             <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }}
                     onClick={() => {
                       if (!f.cod.trim()) return app.say('Informe o código do acessório.')
+                      if (!cad.validar()) return
                       void app.gravar(() => chamar(ponte().salvarAcessorio(f)), `${f.cod} salvo`)
                     }}>Salvar acessório</button>
           </FichaHead>
 
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
-            <Campo label="Código"><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
+            <Campo label="Código *" erro={!f.cod.trim() ? 'Informe o código.' : undefined}><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
             <Campo label="Nome do acessório" span={3}><InputFicha valor={f.nome} onChange={v => cad.alterar({ nome: v })} /></Campo>
 
             <Campo label="Grupo">

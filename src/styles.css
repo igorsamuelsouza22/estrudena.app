@@ -1,27 +1,20 @@
 /* Sistema Estrudena — Material Design 3, tema claro, paleta neutra.
-   Tokens copiados do handoff de design; não inventar cor nova aqui. */
-
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 300; font-display: swap;
-  src: url('./fonts/roboto-300.woff2') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 400; font-display: swap;
-  src: url('./fonts/roboto-400.woff2') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 500; font-display: swap;
-  src: url('./fonts/roboto-500.woff2') format('woff2'); }
-@font-face { font-family: 'Roboto'; font-style: normal; font-weight: 700; font-display: swap;
-  src: url('./fonts/roboto-700.woff2') format('woff2'); }
+   Base neutra do handoff; cores semânticas identificam situações operacionais. */
 
 :root {
-  --color-bg: #f1f3f4; --color-surface: #f8f9fa; --color-text: #202124;
-  --color-divider: #e3e5e8;
-  --color-accent: #202124; --color-accent-2: #5f6368;
-  --color-accent-100: #f1f3f4; --color-accent-200: #e8eaed; --color-accent-300: #dadce0;
+  color-scheme: only light;
+  --brand-yellow:#ffcc00; --brand-red:#b70e16; --color-muted:#627079;
+  --color-bg: #f6f8f9; --color-surface: #f6f8f9; --color-text: #202629;
+  --color-divider: #e1e7ea;
+  --color-accent: #0b5366; --color-accent-2: #347487;
+  --color-accent-100: #e8f2f5; --color-accent-200: #d5e9ef; --color-accent-300: #dadce0;
   --color-accent-400: #bdc1c6; --color-accent-500: #9aa0a6; --color-accent-600: #5f6368;
-  --color-accent-700: #3c4043; --color-accent-800: #202124; --color-accent-900: #202124;
+  --color-accent-700: #0b5366; --color-accent-800: #083e4d; --color-accent-900: #062c36;
   --color-neutral-100: #f8f9fa; --color-neutral-200: #f1f3f4; --color-neutral-300: #e8eaed;
   --color-neutral-400: #dadce0; --color-neutral-500: #bdc1c6; --color-neutral-600: #9aa0a6;
   --color-neutral-700: #5f6368; --color-neutral-800: #3c4043; --color-neutral-900: #202124;
-  --font-heading: 'Roboto', system-ui, sans-serif; --font-heading-weight: 500;
-  --font-body: 'Roboto', system-ui, sans-serif;
+  --font-heading: 'Manrope', 'Segoe UI', sans-serif; --font-heading-weight: 700;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
   --el1: 0 1px 2px rgba(60,64,67,.10), 0 1px 3px 1px rgba(60,64,67,.05);
   --el2: 0 1px 2px rgba(60,64,67,.12), 0 2px 6px 2px rgba(60,64,67,.06);
   --el3: 0 4px 8px 3px rgba(60,64,67,.08), 0 1px 3px rgba(60,64,67,.14);
@@ -31,12 +24,12 @@
 
 body {
   margin: 0; background: var(--color-bg); color: #202124; font-size: 14px; line-height: 1.45;
-  font-family: 'Roboto', system-ui, sans-serif; -webkit-font-smoothing: antialiased;
+  font-family: var(--font-body); -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Roboto', system-ui, sans-serif; font-weight: 500;
-  letter-spacing: 0; text-transform: none; margin: 0;
+  font-family: var(--font-heading); font-weight: 700;
+  letter-spacing: -.03em; text-transform: none; margin: 0;
 }
 
 a { color: #3c4043; text-decoration: none; cursor: pointer }
@@ -46,24 +39,24 @@ input[type=number]::-webkit-outer-spin-button,
 input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0 }
 input[type=number] { -moz-appearance: textfield }
 ::selection { background: #e8eaed }
-:focus-visible { outline: 2px solid #202124; outline-offset: 2px }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px }
 
 /* -------------------------------------------------------------- componentes */
 
 .btn {
-  border-radius: 20px; font-family: 'Roboto', system-ui, sans-serif; font-weight: 500;
+  border-radius: 6px; font-family: var(--font-body); font-weight: 500;
   font-size: 14px; letter-spacing: .01em; text-transform: none; border: 1px solid transparent;
   min-height: 36px; padding: 8px 16px; cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   transition: background .15s, box-shadow .15s, color .15s;
 }
-.btn-primary { background: #202124; color: #fff; border-color: #202124; box-shadow: none }
-.btn-primary:hover { background: #3c4043; box-shadow: var(--el1) }
+.btn-primary { background: var(--color-accent); color: #fff; border-color: var(--color-accent); box-shadow: none }
+.btn-primary:hover { background: var(--color-accent-800); box-shadow: var(--el1) }
 .btn-primary:active { background: #000 }
 .btn-secondary { background: #fff; border-color: #dadce0; color: #202124 }
 .btn-secondary:hover { background: #f1f3f4 }
 .btn-secondary:active { background: #e8eaed }
-.btn-ghost { color: #3c4043; border-color: transparent; background: transparent; border-radius: 18px }
+.btn-ghost { color: var(--color-accent); border-color: transparent; background: transparent; border-radius: 6px }
 .btn-ghost:hover { background: #f1f3f4; color: #202124 }
 .btn:disabled { opacity: .38; cursor: default }
 .btn:disabled:hover { box-shadow: none }
@@ -71,11 +64,11 @@ input[type=number] { -moz-appearance: textfield }
 
 .input {
   border-radius: 8px; background: #fff; border: 1px solid #dadce0; min-height: 40px;
-  padding: 8px 12px; font-family: 'Roboto', system-ui, sans-serif; font-size: 14px; color: #202124;
+  padding: 8px 12px; font-family: var(--font-body); font-size: 14px; color: #202124;
   width: 100%; transition: border-color .15s, box-shadow .15s;
 }
 .input:hover { border-color: #9aa0a6 }
-.input:focus, .input:focus-visible { border-color: #202124; box-shadow: 0 0 0 1px #202124; outline: none }
+.input:focus, .input:focus-visible { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent); outline: none }
 select.input { cursor: pointer }
 
 .field { display: flex; flex-direction: column; min-width: 0 }
@@ -106,7 +99,7 @@ select.input { cursor: pointer }
   display: inline-flex; flex: none;
 }
 .seg-opt {
-  font-family: 'Roboto', system-ui, sans-serif; font-size: 13px; padding: 7px 14px;
+  font-family: var(--font-body); font-size: 13px; padding: 7px 14px;
   color: #3c4043; cursor: pointer; white-space: nowrap; user-select: none;
 }
 .seg-opt + .seg-opt { border-left: 1px solid #e8eaed }
@@ -114,7 +107,7 @@ select.input { cursor: pointer }
 .seg-opt.on { background: #202124; color: #fff }
 .seg-opt:not(.on):hover { background: #f1f3f4 }
 
-.card { border-radius: 12px; background: #fff; border: 0; box-shadow: var(--el1); overflow: hidden }
+.card { border-radius: 8px; background: #fff; border: 1px solid var(--color-divider); box-shadow: none; overflow: hidden }
 .cardhead {
   display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 11px;
   background: var(--color-surface); border-bottom: 1px solid var(--color-divider);
@@ -243,3 +236,61 @@ select.input { cursor: pointer }
   .printdoc table.fluida tfoot { display: table-footer-group }
   .printdoc tr { page-break-inside: avoid }
 }
+
+/* Controles de trabalho e estados legíveis em todo o aplicativo. */
+:root {
+  color-scheme: only light;
+  --brand-yellow:#ffcc00; --brand-red:#b70e16; --color-muted:#627079; --control-height: 36px; }
+[data-density="compacta"] { --control-height: 30px; }
+.appshell .input, .appshell .btn { min-height: var(--control-height) !important; }
+.appshell .input { font-size: 14px !important; }
+.appshell .cardhead { min-height: 46px; height: auto !important; padding-top: 7px; padding-bottom: 7px; flex-wrap: wrap; }
+.appshell .field > label, .appshell .secao { color: #5f6368; font-size: 12px; font-weight: 500; }
+.appshell .linha { min-height: 54px; height: auto !important; padding-top: 8px; padding-bottom: 8px; cursor: pointer; }
+[data-density="compacta"] .linha { min-height: 44px; }
+.appshell .table td { padding-top: 9px; padding-bottom: 9px; }
+.appshell .table th { color: #5f6368; font-weight: 500; font-size: 12px; }
+.appshell .cardtitle { font-size: 15px; }
+.appshell .seg { flex-wrap: wrap; }
+.seg-opt:focus-within { outline: 2px solid #1967d2; outline-offset: 2px; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible { outline: 2px solid #1967d2 !important; outline-offset: 2px; }
+.tag[data-status="Aprovado"], .tag[data-status="Concluída"] { color: #146c43; background: #e6f4ea; }
+.tag[data-status="Proposta"], .tag[data-status="Em separação"] { color: #185abc; background: #e8f0fe; }
+.tag[data-status="Em análise"], .tag[data-status="Pendente"], .tag[data-status="Alta"] { color: #895500; background: #fff3d6; }
+.tag[data-status="Perdido"], .tag[data-status="Urgente"] { color: #a61b1b; background: #fce8e6; }
+.draftbar, .toolbar, .filters { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 0; }
+.draftbar { font-size: 12px; color: #5f6368; padding-top: 0; }
+.field-error { color: #b3261e; font-size: 12px; padding-top: 5px; }
+.notice { padding: 12px 16px; border: 1px solid #d5e1ef; border-radius: 8px; background: #f0f5fb; color: #27476b; font-size: 13px; line-height: 1.5; }
+.notice.warning { background: #fff7e6; border-color: #efdab0; color: #795000; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: #20212480; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.modal-panel { width: 100%; max-height: 90vh; overflow: auto; background: #fff; border-radius: 14px; box-shadow: 0 12px 60px #0003; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 16px 22px; border-bottom: 1px solid var(--color-divider); position: sticky; top: 0; background: white; z-index: 2; }
+.modal-head h2 { font-size: 19px; font-weight: 500; margin: 0; }
+.modal-body { padding: 20px 22px; }
+.search-result { width: 100%; border: 0; border-bottom: 1px solid #e8eaed; background: #fff; text-align: left; display: flex; gap: 12px; align-items: center; padding: 13px; cursor: pointer; color: inherit; }
+.search-result:hover { background: #f1f3f4; }
+.summary-sticky { position: sticky; top: -20px; z-index: 5; display: flex; align-items: center; gap: 24px; flex-wrap: wrap; background: #fff; border: 1px solid var(--color-divider); border-radius: 10px; padding: 12px 18px; box-shadow: 0 3px 10px #00000008; }
+.summary-sticky strong { font-size: 23px; font-weight: 500; }
+.budget-details { display: grid !important; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; }
+.budget-details > details { border: 1px solid var(--color-divider); border-radius: 8px; overflow: hidden; }
+summary { cursor: pointer; padding: 12px 14px; font-weight: 500; font-size: 14px; background: #f8f9fa; }
+.budget-details .card { border: 0; box-shadow: none; }
+.budget-details .cardhead { display: none; }
+.budget-details input { min-height: 30px !important; }
+.budget-details input[type="number"] { max-height: 30px; }
+.budget-details div:has(> input[type="number"]) { min-height: 38px; }
+.tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--color-divider); padding: 10px 12px; }
+.tabs button { border-radius: 6px; }
+.tabs button[aria-selected="true"] { background: var(--color-accent-100); color: var(--color-accent); }
+.flash-panel { position: fixed; right: 24px; bottom: 22px; max-width: 620px; background: #202124; color: white; padding: 14px 18px; border-radius: 10px; z-index: 2000; box-shadow: 0 4px 20px #0003; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.flash-panel button { color: white; }
+@media (max-width: 1250px) { .appshell > aside { width: 205px !important; } .lista-ficha { grid-template-columns: 300px minmax(0,1fr) !important; } .appscroll { padding-left: 16px !important; padding-right: 16px !important; } }
+@media print { .modal-backdrop, .flash-panel { display: none !important; } }
+
+@media screen {
+  .preview-layer { position: fixed; inset: 0; z-index: 1100; background: #e8eaed; overflow: auto; padding: 20px; }
+  .preview-layer .printonly { display: block !important; margin: 18px auto; box-shadow: 0 2px 12px #0002; }
+  .preview-toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px; padding: 14px; margin: -20px -20px 16px; background: #fff; border-bottom: 1px solid #dadce0; }
+}
+@media print { .preview-layer { display: block !important; position: static !important; padding: 0 !important; overflow: visible !important; } }

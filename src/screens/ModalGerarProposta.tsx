@@ -1,3 +1,4 @@
+import { useFocoModal } from '../ui'
 import { useState } from 'react'
 import { muted45, muted50 } from '../ui'
 
@@ -11,15 +12,16 @@ export function ModalGerarProposta(p: {
   onConfirmar: (opcoes: { proposta: boolean; separacao: boolean }) => void
   onFechar: () => void
 }) {
+  const modalRef = useFocoModal(p.onFechar)
   const [proposta, setProposta] = useState(true)
-  const [separacao, setSeparacao] = useState(false)
+  const separacao = false
 
   return (
     <div
       className="dialog-backdrop noprint" style={{ zIndex: 70, alignItems: 'center', paddingTop: 0 }}
       onMouseDown={e => { if (e.target === e.currentTarget) p.onFechar() }}
     >
-      <div className="dialog" style={{ width: 'min(460px, 92vw)', overflow: 'hidden', animation: 'eIn .16s ease' }}>
+      <div ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Gerar documentos" className="dialog" style={{ width: 'min(460px, 92vw)', overflow: 'hidden', animation: 'eIn .16s ease' }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 12, height: 56,
           padding: '0 20px', borderBottom: '1px solid var(--color-divider)'
@@ -31,8 +33,7 @@ export function ModalGerarProposta(p: {
 
         <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
           <div style={{ fontSize: 13, color: muted50, lineHeight: 1.45 }}>
-            Escolha o que deseja salvar em PDF agora. Você pode gerar os dois — cada um
-            abre uma janela para escolher onde gravar.
+            Salve a proposta comercial em PDF. Depois, registre o envio ao cliente na lista de orçamentos.
           </div>
 
           <Opcao
@@ -40,11 +41,7 @@ export function ModalGerarProposta(p: {
             titulo="Proposta comercial"
             detalhe="Documento do cliente, com valores, desenhos e condições."
           />
-          <Opcao
-            marcado={separacao} onMudar={setSeparacao}
-            titulo="Pedido de separação"
-            detalhe="Documento da fábrica, sem nenhum valor comercial."
-          />
+          <div className="notice">O pedido de venda nasce após o aceite do cliente. A separação fica disponível após a liberação técnica.</div>
         </div>
 
         <div style={{

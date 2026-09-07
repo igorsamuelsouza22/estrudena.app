@@ -1,4 +1,6 @@
+import { ampliarReferencia } from '../historico'
 import { useMemo } from 'react'
+import { ehProduto, kitSomenteProdutos } from '../catalogo'
 import { chamar, ponte } from '../api'
 import { fm, fn, num } from '../format'
 import { Ico } from '../icons'
@@ -23,16 +25,19 @@ export function KitsVenda() {
 
   const existe = f ? db.kitsVenda.some(k => k.id === f.id) : false
   const r = f ? motor.kitVendaResumo(f) : null
+  const valido = !!f && kitSomenteProdutos(f, db.materiais)
 
   const lancar = () => {
     if (!f) return
+    if (app.q.id && app.q.status !== 'Rascunho') return app.say('Abra um rascunho ou crie uma revisão antes de lançar o kit.')
+    if (!valido) return app.say('O kit deve conter somente produtos. Revise sua composição antes de lançar.')
     app.setQ(q => ({
-      ...q,
+      ...q, referenciaPrecos: ampliarReferencia(db, q, f.itens.map(it => it.matId)),
       itens: [
         ...q.itens,
         ...f.itens.flatMap(it => {
           const m = db.materiais.find(x => x.id === it.matId)
-          if (!m) return []
+          if (!ehProduto(m)) return []
           const cor = db.cores.find(c => c.id === m.corId)
           return [{
             matId: m.id, qtd: it.qtd, larg: m.larg, alt: m.alt,
@@ -48,7 +53,7 @@ export function KitsVenda() {
   }
 
   return (
-    <ListaFicha
+    <ListaFicha cad={cad} selecionado={app.registroId}
       filtro={cad.filtro} onFiltro={cad.setFiltro}
       placeholder="Filtrar kit de venda"
       resumo={`${lista.length} de ${db.kitsVenda.length} kits`}
@@ -57,7 +62,7 @@ export function KitsVenda() {
         const rk = motor.kitVendaResumo(k)
         return (
           <div key={k.id} onClick={() => cad.selecionar(k)}
-               className={'linha' + (f?.id === k.id ? ' sel' : '')} style={{ height: 44 }}>
+               tabIndex={0} role="button" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }} className={'linha' + (f?.id === k.id ? ' sel' : '')} style={{ height: 44 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-heading)', fontSize: 14, lineHeight: 1.15 }}>{k.cod}</div>
               <div className="trunc" style={{ fontSize: 12, color: muted50 }}>{k.nome}</div>
@@ -75,29 +80,33 @@ export function KitsVenda() {
         <div className="card">
           <FichaHead titulo={existe ? `Kit ${f.cod}` : 'Novo kit de venda'}>
             {existe && (
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
-                      onClick={() => void app.gravar(() => chamar(ponte().excluir('kitsVenda', f.id)), 'Kit excluído').then(() => cad.setForm(null))}>
+              <button hidden={!app.pode('excluir')} className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
+                      onClick={() => void app.gravar(() => chamar(ponte().excluir('kitsVenda', f.id)), 'Kit excluído').then(ok => { if (ok) cad.setForm(null) })}>
                 excluir
               </button>
             )}
             <button className="btn btn-secondary" style={{ minHeight: 24, padding: '2px 10px', fontSize: 13, background: 'var(--color-bg)' }}
-                    onClick={lancar}>Lançar no orçamento</button>
+                    disabled={!valido} onClick={lancar}>Lançar no orçamento</button>
             <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }}
                     onClick={() => {
                       if (!f.cod.trim()) return app.say('Informe o código do kit.')
+                      if (!cad.validar()) return
                       void app.gravar(() => chamar(ponte().salvarKitVenda(f)), `${f.cod} salvo`)
                     }}>Salvar kit</button>
           </FichaHead>
 
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
-            <Campo label="Código"><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
+            {!!f.itens.length && !valido && <div role="alert" style={{ gridColumn: '1/-1', padding: 12, background: '#fce8e6', color: '#b3261e', fontSize: 13 }}>
+              Este kit contém matéria-prima, produto removido ou quantidade inválida. Revise os itens para poder salvar e lançar o kit completo.
+            </div>}
+            <Campo label="Código *" erro={!f.cod.trim() ? 'Informe o código.' : undefined}><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
             <Campo label="Nome do kit" span={3}><InputFicha valor={f.nome} onChange={v => cad.alterar({ nome: v })} /></Campo>
             <div className="field" style={{ gridColumn: '1/-1' }}>
               <label>Descrição comercial</label>
               <InputFicha valor={f.descricao} onChange={v => cad.alterar({ descricao: v })} />
             </div>
 
-            <Secao topo>Itens do kit</Secao>
+            <Secao topo>Produtos do kit</Secao>
             <div style={{ gridColumn: '1/-1' }}>
               <table className="table" style={{ fontSize: 13 }}>
                 <thead><tr>
@@ -111,20 +120,20 @@ export function KitsVenda() {
                 <tbody>
                   {f.itens.map((it, i) => {
                     const m = db.materiais.find(x => x.id === it.matId)
-                    const custo = m ? motor.custoBase(m) * (m.unidade === 'M2' ? (m.larg ?? 0) * (m.alt ?? 0) / 1e6 : 1) : 0
+                    const custo = m ? motor.custoNaMedida(m) : 0
                     const mku = (m?.markup ?? db.config.markup) / 100
                     const unit = mku < 0.98 ? custo / (1 - mku) : custo
                     return (
                       <tr key={it.matId}>
                         <td style={{ fontFamily: 'var(--font-heading)', fontSize: 14, whiteSpace: 'nowrap' }}>{m?.cod ?? '?'}</td>
                         <td style={{ fontSize: 13, maxWidth: 230 }}>{m?.desc ?? 'item removido'}</td>
-                        <td style={{ fontSize: 12, color: muted50 }}>{m?.tipo ?? ''}</td>
+                        <td style={{ fontSize: 12, color: ehProduto(m) ? muted50 : '#b3261e' }}>{ehProduto(m) ? m.tipo : 'Matéria-prima / indisponível'}</td>
                         <td className="tnum" style={{ textAlign: 'right', fontSize: 12, whiteSpace: 'nowrap' }}>
                           {fn(m?.larg ?? 0, 0)} × {fn(m?.alt ?? 0, 0)}
                         </td>
                         <td>
                           <input className="input tnum" type="number" style={{ minHeight: 22, padding: '1px 5px', fontSize: 13, textAlign: 'right' }}
-                                 value={it.qtd}
+                                 aria-label={`Quantidade do item ${i + 1}`} value={it.qtd}
                                  onChange={e => cad.alterar({ itens: f.itens.map((x, k) => (k === i ? { ...x, qtd: num(e.target.value) } : x)) })} />
                         </td>
                         <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fm(unit)}</td>
@@ -148,8 +157,8 @@ export function KitsVenda() {
                           if (!id || f.itens.some(x => x.matId === id)) return
                           cad.alterar({ itens: [...f.itens, { matId: id, qtd: 1 }] })
                         }}>
-                  <option value="">— escolher item do catálogo —</option>
-                  {db.materiais.map(m => <option key={m.id} value={m.id}>{m.cod} · {m.desc}</option>)}
+                  <option value="">— escolher produto —</option>
+                  {db.materiais.filter(ehProduto).map(m => <option key={m.id} value={m.id}>{m.cod} · {m.desc}</option>)}
                 </select>
               </div>
             </div>

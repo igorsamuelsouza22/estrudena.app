@@ -1,3 +1,4 @@
+import { useFiltroPropostas } from '../FiltrosPropostas'
 import { useMemo } from 'react'
 import { fk, fm, pc } from '../format'
 import { useApp } from '../store'
@@ -6,18 +7,19 @@ import { Barra, Card, KpiFaixa, muted50 } from '../ui'
 export function Relatorios() {
   const app = useApp()
   const { db, motor } = app
+  const { lista, filtros } = useFiltroPropostas([...db.orcamentos.filter(o=>!(db.pedidos||[]).some(p=>p.numero===o.numero)), ...(db.pedidos||[]).filter(p=>p.status!=='Cancelado').map(p=>p.proposta)])
 
   const d = useMemo(() => {
-    const calcs = new Map(db.orcamentos.map(o => [o.id, motor.calc(o)]))
-    const tot = db.orcamentos.reduce((a, o) => a + (calcs.get(o.id)?.total ?? 0), 0)
-    const totCusto = db.orcamentos.reduce((a, o) => a + (calcs.get(o.id)?.custoTotal ?? 0), 0)
-    const aprov = db.orcamentos.filter(o => o.status === 'Aprovado')
+    const calcs = new Map(lista.map(o => [o.id, motor.calc(o)]))
+    const tot = lista.reduce((a, o) => a + (calcs.get(o.id)?.total ?? 0), 0)
+    const totCusto = lista.reduce((a, o) => a + (calcs.get(o.id)?.custoTotal ?? 0), 0)
+    const aprov = lista.filter(o => o.status === 'Aprovado')
     const vendaAprov = aprov.reduce((a, o) => a + (calcs.get(o.id)?.total ?? 0), 0)
     const kgAprov = aprov.reduce((a, o) => a + (calcs.get(o.id)?.kg ?? 0), 0)
-    const impostoTotal = db.orcamentos.reduce((a, o) => a + (calcs.get(o.id)?.imposto ?? 0), 0)
+    const impostoTotal = lista.reduce((a, o) => a + (calcs.get(o.id)?.imposto ?? 0), 0)
 
     const porVendedor = new Map<string, { v: number; c: number; n: number }>()
-    for (const o of db.orcamentos) {
+    for (const o of lista) {
       const c = calcs.get(o.id)
       if (!c) continue
       const acc = porVendedor.get(o.vendedor) ?? { v: 0, c: 0, n: 0 }
@@ -28,7 +30,7 @@ export function Relatorios() {
     }
 
     return { calcs, tot, totCusto, aprov, vendaAprov, kgAprov, impostoTotal, porVendedor }
-  }, [db.orcamentos, motor])
+  }, [lista, motor])
 
   const cfg = db.config
   const rateio = [
@@ -39,12 +41,14 @@ export function Relatorios() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+      {filtros}
+      <div className="notice">Pedidos consideram a revisão aceita; oportunidades sem pedido consideram a última revisão, no período e situação selecionados. Carteira aprovada considera apenas aprovados. Taxa de fechamento = aprovados ÷ oportunidades filtradas. Comissões são estimadas, não pagamentos realizados.</div>
       <KpiFaixa colunas={5} itens={[
-        { label: 'Venda em proposta', valor: fk(d.tot), sub: `${db.orcamentos.length} propostas` },
+        { label: 'Venda em proposta', valor: fk(d.tot), sub: `${lista.length} propostas` },
         { label: 'Custo total', valor: fk(d.totCusto), sub: 'MP, frete e imposto' },
         { label: 'Saldo geral', valor: fk(d.tot - d.totCusto), sub: `${pc(d.tot ? (d.tot - d.totCusto) / d.tot * 100 : 0)} de margem média` },
         { label: 'Venda média por kg', valor: fm(d.kgAprov ? d.vendaAprov / d.kgAprov : 0), sub: 'carteira aprovada' },
-        { label: 'Fechamento', valor: pc(db.orcamentos.length ? d.aprov.length / db.orcamentos.length * 100 : 0), sub: `${d.aprov.length} de ${db.orcamentos.length}` }
+        { label: 'Fechamento', valor: pc(lista.length ? d.aprov.length / lista.length * 100 : 0), sub: `${d.aprov.length} de ${lista.length}` }
       ]} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1.4fr) minmax(0,1fr)', gap: 14, alignItems: 'start' }}>
@@ -60,7 +64,7 @@ export function Relatorios() {
                 <th style={{ paddingRight: 11, textAlign: 'right' }} />
               </tr></thead>
               <tbody>
-                {db.orcamentos.map(o => {
+                {lista.map(o => {
                   const c = d.calcs.get(o.id)!
                   return (
                     <tr key={o.id}>

@@ -35,14 +35,14 @@ export function Instaladores() {
   }
 
   return (
-    <ListaFicha
+    <ListaFicha cad={cad} selecionado={app.registroId}
       filtro={cad.filtro} onFiltro={cad.setFiltro}
       placeholder="Filtrar equipe, responsável ou região"
       resumo={`${lista.length} de ${db.instaladores.length} equipes`}
       rotuloNovo="+ nova equipe" onNovo={cad.criarNovo}
       lista={lista.map(x => (
         <div key={x.id} onClick={() => cad.selecionar(x)}
-             className={'linha' + (f?.id === x.id ? ' sel' : '')} style={{ height: 48 }}>
+             tabIndex={0} role="button" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }} className={'linha' + (f?.id === x.id ? ' sel' : '')} style={{ height: 48 }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: 14, width: 52, flex: 'none' }}>{x.cod}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="trunc" style={{ fontSize: 13, lineHeight: 1.2 }}>{x.nome}</div>
@@ -68,20 +68,21 @@ export function Instaladores() {
               </button>
             )}
             {existe && !obras.length && (
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
-                      onClick={() => void app.gravar(() => chamar(ponte().excluir('instaladores', f.id)), 'Equipe excluída').then(() => cad.setForm(null))}>
+              <button hidden={!app.pode('excluir')} className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
+                      onClick={() => void app.gravar(() => chamar(ponte().excluir('instaladores', f.id)), 'Equipe excluída').then(ok => { if (ok) cad.setForm(null) })}>
                 excluir
               </button>
             )}
             <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }}
                     onClick={() => {
                       if (!f.cod.trim()) return app.say('Informe o código da equipe.')
+                      if (!cad.validar()) return
                       void app.gravar(() => chamar(ponte().salvarInstalador(f)), `${f.cod} salva`)
                     }}>Salvar equipe</button>
           </FichaHead>
 
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
-            <Campo label="Código"><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
+            <Campo label="Código *" erro={!f.cod.trim() ? 'Informe o código.' : undefined}><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
             <Campo label="Nome da equipe / empresa" span={3}><InputFicha valor={f.nome} onChange={v => cad.alterar({ nome: v })} /></Campo>
             <Campo label="Vínculo">
               <select className="input" style={{ minHeight: 28, fontSize: 13 }} value={f.tipo}

@@ -1,3 +1,4 @@
+import { matrizPadrao } from '../../src/permissoes'
 import type { PoolClient } from 'pg'
 import bcrypt from 'bcryptjs'
 import schemaSql from './schema.sql'
@@ -6,23 +7,20 @@ import {
   LISTAS, MATERIAIS, ORCAMENTOS_EXEMPLO, USUARIOS
 } from './seed-data'
 
-export const VERSAO_ATUAL = 3
+export const VERSAO_ATUAL = 7
 
 /** Repositório padrão de onde as atualizações chegam. */
 export const REPO_PADRAO = 'igorsamuelsouza22/estrudena.app'
 
 /** Cria o schema (idempotente) e popula o catálogo na primeira vez. */
 export async function migrar(c: PoolClient): Promise<void> {
-  await c.query(schemaSql)
-
-  const { rows } = await c.query<{ versao: number }>(
-    'SELECT versao FROM schema_versao ORDER BY versao DESC LIMIT 1'
-  )
-  const atual = rows[0]?.versao ?? 0
-  if (atual >= VERSAO_ATUAL) return
-
   await c.query('BEGIN')
   try {
+    await c.query("SELECT pg_advisory_xact_lock(hashtext('estrudena:migracao'))")
+    await c.query(schemaSql)
+    const { rows } = await c.query<{ versao: number }>('SELECT versao FROM schema_versao ORDER BY versao DESC LIMIT 1')
+    const atual = rows[0]?.versao ?? 0
+    if (atual >= VERSAO_ATUAL) { await c.query('COMMIT'); return }
     if (atual < 1) await seedCatalogo(c)
     // v2: a Ana passou a ser administradora. Vale também para quem já instalou,
     // e só mexe na conta original criada pelo instalador.
@@ -37,6 +35,26 @@ export async function migrar(c: PoolClient): Promise<void> {
       await c.query('UPDATE config SET github_repo = $1 WHERE id AND github_repo = $2',
         [REPO_PADRAO, ''])
     }
+    // Só classifica os insumos conhecidos do catálogo original. Não infere
+    // pela unidade: portas também eram calculadas por kg. Mantém os vínculos
+    // e os parâmetros de custo das propostas já gravadas.
+    if (atual < 4) {
+      for (const m of MATERIAIS.filter(m => m.categoria === 'materia_prima')) {
+        await c.query(
+          "UPDATE materiais SET categoria = 'materia_prima' WHERE id = $1 AND cod = $2 AND descricao = $3",
+          [m.id, m.cod, m.desc]
+        )
+      }
+    }
+    if (atual < 6) {
+      // Preserva ids e conferências; normaliza apenas o nome das revisões antigas.
+      await c.query(`WITH revisoes AS (
+        SELECT id, row_number() OVER (PARTITION BY numero ORDER BY
+          COALESCE(NULLIF(regexp_replace(rev, '[^0-9]', '', 'g'), ''), '0')::integer, atualizado_em, id) AS n
+        FROM orcamentos
+      ) UPDATE orcamentos o SET rev='rev' || r.n FROM revisoes r WHERE o.id=r.id`)
+    }
+    if(atual < 7) await c.query('INSERT INTO permissoes_perfis(id,matriz) VALUES(true,$1) ON CONFLICT(id) DO NOTHING',[JSON.stringify(matrizPadrao())])
     await c.query('INSERT INTO schema_versao (versao) VALUES ($1)', [VERSAO_ATUAL])
     await c.query('COMMIT')
   } catch (e) {
@@ -179,7 +197,7 @@ export async function carregarExemplo(c: PoolClient): Promise<void> {
                    $21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
          ON CONFLICT (id) DO NOTHING`,
         [
-          o.id, o.numero, o.rev, o.status, o.data, o.vendedor, o.enviadaEm, o.clienteId,
+          o.id, o.numero, 'rev1', o.status, o.data, o.vendedor, o.enviadaEm, o.clienteId,
           o.obra, o.cidade, o.contato, o.prazo, o.condPag, o.instaladorId,
           o.moM2, o.moHoras, o.moHora, o.moPct, o.moFixo, o.km, o.moKm,
           o.frete, o.terceiros, o.outros, o.markup, o.imposto, o.com1, o.com2, o.perda, o.desconto

@@ -108,6 +108,20 @@ CREATE TABLE IF NOT EXISTS materiais (
   mo_m2     numeric(14,4) NOT NULL DEFAULT 170.24
 );
 
+-- A classificação preserva os IDs usados nas propostas anteriores.
+ALTER TABLE materiais ADD COLUMN IF NOT EXISTS categoria text NOT NULL DEFAULT 'produto'
+  CHECK (categoria IN ('produto', 'materia_prima'));
+
+CREATE TABLE IF NOT EXISTS produto_materiais (
+  produto_id text NOT NULL REFERENCES materiais(id) ON DELETE CASCADE,
+  material_id text NOT NULL REFERENCES materiais(id) ON DELETE RESTRICT,
+  qtd numeric(14,4) NOT NULL CHECK (qtd > 0),
+  base text NOT NULL DEFAULT 'UN' CHECK (base IN ('UN', 'M2', 'ML')),
+  ordem integer NOT NULL DEFAULT 0,
+  PRIMARY KEY (produto_id, material_id),
+  CHECK (produto_id <> material_id)
+);
+
 CREATE TABLE IF NOT EXISTS material_acessorios (
   material_id text NOT NULL REFERENCES materiais(id) ON DELETE CASCADE,
   aces_id     text NOT NULL REFERENCES acessorios(id) ON DELETE RESTRICT,
@@ -274,4 +288,39 @@ CREATE TABLE IF NOT EXISTS separacao_conf (
   ordem        integer NOT NULL,
   separado     numeric(14,4) NOT NULL DEFAULT 0,
   PRIMARY KEY (orcamento_id, ordem)
+);
+
+-- v5: referências de preços, planejamento e conferência dos insumos.
+ALTER TABLE materiais ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now();
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS referencia_precos jsonb;
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS entrega_prevista text NOT NULL DEFAULT '';
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS prioridade text NOT NULL DEFAULT 'Normal';
+ALTER TABLE separacoes ADD COLUMN IF NOT EXISTS insumos jsonb NOT NULL DEFAULT '{}';
+
+-- v6: ciclo comercial e operacional com histórico imutável.
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS emitida_em text NOT NULL DEFAULT '';
+ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS validade_ate text NOT NULL DEFAULT '';
+ALTER TABLE orcamentos DROP CONSTRAINT IF EXISTS orcamentos_status_check;
+ALTER TABLE orcamentos ADD CONSTRAINT orcamentos_status_check CHECK (status IN ('Rascunho','Proposta','Enviada','Em análise','Aprovado','Perdido','Expirada','Substituída'));
+ALTER TABLE separacoes ADD COLUMN IF NOT EXISTS versao integer NOT NULL DEFAULT 0;
+CREATE TABLE IF NOT EXISTS pedidos_venda (
+ id text PRIMARY KEY, numero text NOT NULL UNIQUE,
+ orcamento_id text NOT NULL REFERENCES orcamentos(id),
+ dados jsonb NOT NULL, versao integer NOT NULL DEFAULT 1
+);
+CREATE TABLE IF NOT EXISTS eventos_negocio (
+ id text PRIMARY KEY, numero text NOT NULL, data timestamptz NOT NULL DEFAULT now(),
+ autor text NOT NULL, acao text NOT NULL, detalhe text NOT NULL
+);
+CREATE INDEX IF NOT EXISTS eventos_numero ON eventos_negocio(numero, data);
+
+-- v7: política de acesso compartilhada por todos os terminais.
+CREATE TABLE IF NOT EXISTS permissoes_perfis (
+ id boolean PRIMARY KEY DEFAULT true CHECK(id), matriz jsonb NOT NULL,
+ versao integer NOT NULL DEFAULT 1, atualizado_por text NOT NULL DEFAULT 'Sistema',
+ atualizado_em timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS permissoes_historico (
+ id bigserial PRIMARY KEY, autor_id text NOT NULL, autor_nome text NOT NULL,
+ anterior jsonb NOT NULL, nova jsonb NOT NULL, data timestamptz NOT NULL DEFAULT now()
 );

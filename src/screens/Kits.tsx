@@ -26,14 +26,14 @@ export function Kits() {
   const custoDoForm = f ? motor.acesCusto(f.itens) : 0
 
   return (
-    <ListaFicha
+    <ListaFicha cad={cad} selecionado={app.registroId}
       filtro={cad.filtro} onFiltro={cad.setFiltro}
       placeholder="Filtrar kit ou aplicação"
       resumo={`${lista.length} de ${db.kits.length} kits`}
       rotuloNovo="+ novo kit" onNovo={cad.criarNovo}
       lista={lista.map(k => (
         <div key={k.id} onClick={() => cad.selecionar(k)}
-             className={'linha' + (f?.id === k.id ? ' sel' : '')} style={{ height: 40 }}>
+             tabIndex={0} role="button" onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click() } }} className={'linha' + (f?.id === k.id ? ' sel' : '')} style={{ height: 40 }}>
           <span style={{ fontFamily: 'var(--font-heading)', fontSize: 14, width: 74, flex: 'none' }}>{k.cod}</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="trunc" style={{ fontSize: 13, lineHeight: 1.2 }}>{k.nome}</div>
@@ -50,20 +50,21 @@ export function Kits() {
         <div className="card">
           <FichaHead titulo={existe ? `Kit ${f.cod}` : 'Novo kit de ferragem'}>
             {existe && !usos.length && (
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
-                      onClick={() => void app.gravar(() => chamar(ponte().excluir('kits', f.id)), 'Kit excluído').then(() => cad.setForm(null))}>
+              <button hidden={!app.pode('excluir')} className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }}
+                      onClick={() => void app.gravar(() => chamar(ponte().excluir('kits', f.id)), 'Kit excluído').then(ok => { if (ok) cad.setForm(null) })}>
                 excluir
               </button>
             )}
             <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }}
                     onClick={() => {
                       if (!f.cod.trim()) return app.say('Informe o código do kit.')
+                      if (!cad.validar()) return
                       void app.gravar(() => chamar(ponte().salvarKit(f)), `${f.cod} salvo`)
                     }}>Salvar kit</button>
           </FichaHead>
 
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
-            <Campo label="Código"><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
+            <Campo label="Código *" erro={!f.cod.trim() ? 'Informe o código.' : undefined}><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
             <Campo label="Nome do kit" span={3}><InputFicha valor={f.nome} onChange={v => cad.alterar({ nome: v })} /></Campo>
             <div className="field" style={{ gridColumn: '1/-1' }}>
               <label>Aplicação</label>
@@ -92,7 +93,7 @@ export function Kits() {
                         <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fm(a?.preco ?? 0)}</td>
                         <td>
                           <input className="input tnum" type="number" style={{ minHeight: 22, padding: '1px 5px', fontSize: 13, textAlign: 'right' }}
-                                 value={it.qtd}
+                                 aria-label={`Quantidade do item ${i + 1}`} value={it.qtd}
                                  onChange={e => cad.alterar({ itens: f.itens.map((x, k) => (k === i ? { ...x, qtd: num(e.target.value) } : x)) })} />
                         </td>
                         <td style={{ fontSize: 12, color: muted50 }}>{a?.unidade ?? ''}</td>

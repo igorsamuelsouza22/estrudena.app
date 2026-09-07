@@ -11,7 +11,7 @@ Um computador da empresa é o **Servidor**: ele guarda o banco de dados.
 Todos os outros são **Terminais**: rodam o mesmo programa e leem/gravam no banco
 do servidor pela rede.
 
-O mesmo arquivo `Sistema-Estrudena-Setup-1.2.4.exe` instala os dois. A única
+O mesmo arquivo `Sistema-Estrudena-Setup-1.3.0.exe` instala os dois. A única
 escolha durante a instalação é essa. Não há nada para configurar depois.
 
 ```
@@ -62,7 +62,7 @@ autoridade certificadora, com custo anual). Com ele em mãos, é só configurar 
 Escolha o computador que fica **ligado durante o expediente**. De preferência um
 que não seja desligado no meio do dia.
 
-1. Copie `Sistema-Estrudena-Setup-1.2.4.exe` para esse computador.
+1. Copie `Sistema-Estrudena-Setup-1.3.0.exe` para esse computador.
 2. Clique com o botão direito → **Executar como administrador**.
 3. Na tela **Função desta máquina**, escolha **Servidor**.
 4. Avance até o fim.
@@ -92,7 +92,7 @@ Os dados ficam em `C:\ProgramData\Estrudena\pgdata`.
 
 Em cada uma das outras máquinas:
 
-1. Execute o mesmo `Sistema-Estrudena-Setup-1.2.4.exe`.
+1. Execute o mesmo `Sistema-Estrudena-Setup-1.3.0.exe`.
 2. Escolha **Terminal**.
 3. Avance até o fim.
 
@@ -120,8 +120,17 @@ Três contas já vêm criadas:
 
 ### O que cada perfil enxerga
 
-| Tela              | Administrador | Vendedor | Produção |
-| ----------------- | :-----------: | :------: | :------: |
+Os acessos são configuráveis em **Gestão → Pessoas e acessos → Matriz de permissões**.
+Administradores mantêm acesso completo e são os únicos que podem alterar usuários e a matriz.
+
+Por padrão, Vendedor acessa valores, orçamentos, clientes, aceite inicial e consulta/planejamento de pedidos.
+Produção consulta e planeja pedidos e executa produção, entrega e instalação, sem valores comerciais.
+Permissões dependentes são ajustadas juntas e só entram em vigor ao clicar em **Salvar permissões**.
+
+Para atualizar instalações anteriores, consulte [as instruções da versão 1.3.0](docs/versao-1.3.0.md).
+Atualize servidor e todos os terminais para manter as mesmas regras de negócio e acesso.
+
+----------------- | :-----------: | :------: | :------: |
 | Visão geral       | ● | ● | ● |
 | Orçamento         | ● | ● | — |
 | Propostas         | ● | ● | ● |
@@ -198,7 +207,7 @@ ficam com a mais recente.
 ### Pelo GitHub (quem desenvolve publica direto)
 
 1. Publique uma release no repositório com a etiqueta no formato `v1.2.3` e o
-   `Sistema-Estrudena-Setup-1.2.4.exe` anexado.
+   `Sistema-Estrudena-Setup-1.3.0.exe` anexado.
 2. Uma única vez, em **Configurações → Atualização do sistema**, preencha o campo
    **Repositório no GitHub** com `usuario/repositorio`.
 

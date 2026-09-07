@@ -1,10 +1,15 @@
+import { lerPermissoes, salvarPermissoes, exigirPermissao } from './db/permissoes'
+import { permissaoComando, type Permissao, type MatrizPermissoes } from '../src/permissoes'
 import path from 'node:path'
 import fs from 'node:fs'
 import { BrowserWindow, app, dialog, ipcMain, shell } from 'electron'
 import { consultarCnpj } from './cnpj'
 import * as github from './github'
-import { conectar, encerrar, estadoConexao, temPool } from './db/pool'
+import { conectar, encerrar, estadoConexao, temPool, comCliente } from './db/pool'
 import * as repo from './db/repo'
+import { dadosPorPerfil, executarNegocio } from './db/negocio'
+import type { Usuario, ComandoNegocio } from '../src/shared/types'
+let sessao: Usuario | null = null
 import * as versoes from './db/versoes'
 
 /**
@@ -112,6 +117,40 @@ function handler<A extends unknown[], R>(
 ): void {
   ipcMain.handle(canal, async (_e, ...args) => {
     try {
+      if (_e.sender !== janela?.webContents || _e.senderFrame !== _e.sender.mainFrame) throw new Error('Origem não autorizada.')
+      const permissoesCanal: Record<string,Permissao> = {
+        'db:config':'config','db:cliente':'clientes','db:orcamento':'orcamentos','db:separacao':'producao',
+        'db:cor':'apoio','db:acessorio':'apoio','db:kit':'apoio','db:kitVenda':'apoio','db:instalador':'apoio',
+        'db:usuario':'usuarios','db:permissoes':'usuarios','db:listaAdd':'config','db:listaDel':'config',
+        'db:exemplo':'sistema','app:exportarJson':'sistema','cnpj:consultar':'clientes',
+        'atualizacao:definirRepo':'sistema','atualizacao:testarRepo':'sistema','atualizacao:historico':'sistema',
+        'atualizacao:publicar':'sistema','atualizacao:remover':'sistema'
+      }
+      if (canal.startsWith('db:') || permissoesCanal[canal] || ['app:salvarPdf','app:imprimir'].includes(canal)) {
+        if (!sessao) throw new Error('Entre na sua conta para continuar.')
+        const u = (await comCliente(c=>c.query('SELECT id,nome,usuario,perfil,ativo FROM usuarios WHERE id=$1', [sessao!.id]))).rows[0]
+        if (!u?.ativo) { sessao = null; throw new Error('Sessão encerrada. Entre novamente.') }
+        sessao = u
+        const politica = await lerPermissoes()
+        if (permissoesCanal[canal]) exigirPermissao(politica,u,permissoesCanal[canal])
+        if(canal==='db:negocio') exigirPermissao(politica,u,permissaoComando(args[0]?.acao))
+        if(canal==='db:material') {
+          const categoria=args[0]?.categoria
+          exigirPermissao(politica,u,categoria==='materia_prima'?'materias_primas':'produtos')
+          const anterior=(await comCliente(c=>c.query('SELECT categoria FROM materiais WHERE id=$1',[args[0]?.id]))).rows[0]
+          if(anterior&&anterior.categoria!==categoria) exigirPermissao(politica,u,anterior.categoria==='materia_prima'?'materias_primas':'produtos')
+        }
+        if(canal==='db:excluir') {
+          exigirPermissao(politica,u,'excluir')
+          const tabela=args[0]
+          let permissao:Permissao = tabela==='clientes'?'clientes':tabela==='usuarios'?'usuarios':tabela==='orcamentos'?'orcamentos':'apoio'
+          if(tabela==='materiais') {
+            const m=(await comCliente(c=>c.query('SELECT categoria FROM materiais WHERE id=$1',[args[1]]))).rows[0]
+            permissao=m?.categoria==='materia_prima'?'materias_primas':'produtos'
+          }
+          exigirPermissao(politica,u,permissao)
+        }
+      }
       return { ok: true, dados: await fn(...(args as A)) }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
@@ -159,12 +198,22 @@ function registrarIpc(): void {
     avisarConexao()
     return st
   })
-  handler('conexao:estado', async () => estadoConexao())
+  handler('conexao:estado', async () => {
+    const estado = estadoConexao()
+    if (estado.status === 'conectado') {
+      try { await comCliente(c => c.query({ text: 'SELECT 1', query_timeout: 5000 } as { text: string })) }
+      catch { return { ...estado, status: 'erro', mensagem: 'Servidor indisponível. Tente reconectar.' } }
+    }
+    return estado
+  })
 
-  handler('auth:login', (usuario: string, senha: string) => repo.autenticar(usuario, senha))
+  handler('auth:login', async (usuario: string, senha: string) => { sessao = null; const r = await repo.autenticar(usuario, senha); if(r.ok && r.usuario) sessao = r.usuario; return r })
+  handler('auth:logout', async () => { sessao = null })
+  handler('db:negocio', async (cmd: ComandoNegocio) => executarNegocio(await repo.carregarDB(), cmd, sessao!))
 
-  handler('db:carregar', () => repo.carregarDB())
-  handler('db:config', (cfg: Parameters<typeof repo.salvarConfig>[0]) => repo.salvarConfig(cfg))
+  handler('db:permissoes', (matriz:MatrizPermissoes, versao:number) => salvarPermissoes(matriz,versao,sessao!))
+  handler('db:carregar', async () => dadosPorPerfil(await repo.carregarDB(), sessao!))
+  handler('db:config', (cfg: Parameters<typeof repo.salvarConfig>[0], anterior?: Parameters<typeof repo.salvarConfig>[0]) => repo.salvarConfig(cfg, anterior))
   handler('db:material', (m: Parameters<typeof repo.salvarMaterial>[0]) => repo.salvarMaterial(m))
   handler('db:cor', (x: Parameters<typeof repo.salvarCor>[0]) => repo.salvarCor(x))
   handler('db:acessorio', (x: Parameters<typeof repo.salvarAcessorio>[0]) => repo.salvarAcessorio(x))
@@ -172,11 +221,11 @@ function registrarIpc(): void {
   handler('db:kitVenda', (x: Parameters<typeof repo.salvarKitVenda>[0]) => repo.salvarKitVenda(x))
   handler('db:instalador', (x: Parameters<typeof repo.salvarInstalador>[0]) => repo.salvarInstalador(x))
   handler('db:cliente', (x: Parameters<typeof repo.salvarCliente>[0]) => repo.salvarCliente(x))
-  handler('db:usuario', (x: Parameters<typeof repo.salvarUsuario>[0]) => repo.salvarUsuario(x))
-  handler('db:orcamento', (x: Parameters<typeof repo.salvarOrcamento>[0]) => repo.salvarOrcamento(x))
+  handler('db:usuario', (x: Parameters<typeof repo.salvarUsuario>[0]) => repo.salvarUsuario(x, sessao!.id))
+  handler('db:orcamento', (x: Parameters<typeof repo.salvarOrcamento>[0]) => repo.salvarOrcamento(x, sessao!.nome))
   handler('db:separacao', (id: string, s: Parameters<typeof repo.salvarSeparacao>[1]) =>
-    repo.salvarSeparacao(id, s))
-  handler('db:excluir', (tabela: string, id: string) => repo.excluir(tabela, id))
+    repo.salvarSeparacao(id, s, sessao!.nome))
+  handler('db:excluir', (tabela: string, id: string) => repo.excluir(tabela, id, sessao!.id))
   handler('db:listaAdd', (cat: string, valor: string) => repo.adicionarLista(cat, valor))
   handler('db:listaDel', (cat: string, valor: string) => repo.removerLista(cat, valor))
   handler('db:exemplo', () => repo.restaurarExemplo())

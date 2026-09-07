@@ -1,6 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { chamar, ponte } from '../api'
 import { margemDoItem, markupDaMargem } from '../calc'
+import { ehProduto } from '../catalogo'
 import { fm, fn, num } from '../format'
 import { Ico } from '../icons'
 import { useApp } from '../store'
@@ -10,6 +11,7 @@ import {
 } from '../ui'
 import { novoId, useCadastro } from './useCadastro'
 import type { Material } from '../shared/types'
+import { ComposicaoProduto } from './ComposicaoProduto'
 
 const DESENHOS = [
   'tip-PA150', 'tip-PA300', 'tip-PA240', 'tip-PA70', 'tip-PA60',
@@ -22,44 +24,48 @@ const MAX_IMG = 400 * 1024
 export function Itens() {
   const app = useApp()
   const { db, motor } = app
+  const produtos = useMemo(() => db.materiais.filter(ehProduto), [db.materiais])
 
   const vazio = (): Material => ({
     id: novoId('mat'), cod: '', desc: '', serie: db.series[0] ?? '—', tipo: db.tipos[0] ?? '',
-    unidade: 'KG', pesoUnit: 0, larg: 1000, alt: 1000, preco: 0, fc: 1,
+    categoria: 'produto', composicao: [],
+    unidade: 'UN', pesoUnit: 0, larg: 1000, alt: 1000, preco: 0, fc: 1,
     corId: '', kitId: '', aces: [], img: '', imgData: null,
     markup: db.config.markup, imposto: db.config.imposto, comissao: db.config.com1, moM2: db.config.moM2
   })
 
-  const cad = useCadastro(db.materiais, vazio)
+  const [aba, setAba] = useState('Dados gerais')
+  const cad = useCadastro(produtos, vazio)
   const f = cad.form
 
   const lista = useMemo(() => {
     const t = cad.filtro.trim().toLowerCase()
-    if (!t) return db.materiais
-    return db.materiais.filter(m => [m.cod, m.desc, m.tipo, m.serie].join(' ').toLowerCase().includes(t))
-  }, [db.materiais, cad.filtro])
+    if (!t) return produtos
+    return produtos.filter(m => [m.cod, m.desc, m.tipo, m.serie].join(' ').toLowerCase().includes(t))
+  }, [produtos, cad.filtro])
 
-  const emUso = f ? db.orcamentos.some(o => o.itens.some(i => i.matId === f.id)) : false
+  const emUso = f ? db.orcamentos.some(o => o.itens.some(i => i.matId === f.id))
+    || db.kitsVenda.some(k => k.itens.some(i => i.matId === f.id)) : false
   const existeNoBanco = f ? db.materiais.some(m => m.id === f.id) : false
 
   const salvar = async () => {
-    if (!f) return
+    if (!f || !cad.validar()) return
     if (!f.cod.trim()) return app.say('Informe o código do item.')
     if (!f.desc.trim()) return app.say('Informe a descrição do item.')
-    await app.gravar(() => chamar(ponte().salvarMaterial(f)), `${f.cod} salvo`)
+    const salvo = await app.gravar(() => chamar(ponte().salvarMaterial(f)), `${f.cod} salvo`)
+    if (salvo && f.categoria === 'materia_prima') app.irPara('materiasprimas')
   }
 
   const excluir = async () => {
     if (!f) return
-    await app.gravar(() => chamar(ponte().excluir('materiais', f.id)), `${f.cod} excluído`)
-    cad.setForm(null)
+    if (await app.gravar(() => chamar(ponte().excluir('materiais', f.id)), `${f.cod} excluído`)) cad.setForm(null)
   }
 
   const cor = f ? db.cores.find(c => c.id === f.corId) : undefined
   const kit = f ? db.kits.find(k => k.id === f.kitId) : undefined
   const custoAces = f ? motor.acesCusto(f.aces) : 0
   const custoKit = f ? motor.kitCusto(f.kitId) : 0
-  const custoEst = f ? motor.custoBase(f) * (f.unidade === 'M2' ? (f.larg ?? 0) * (f.alt ?? 0) / 1e6 : 1) : 0
+  const custoEst = f ? motor.custoNaMedida(f) : 0
   const vendaEst = f && f.markup < 98 ? custoEst / (1 - f.markup / 100) : custoEst
   const margem = f ? margemDoItem(f.markup, f.imposto, f.comissao) : 0
 
@@ -74,51 +80,40 @@ export function Itens() {
   const previa = f ? (f.imgData || (f.img ? `assets/${f.img}.png` : '')) : ''
 
   return (
-    <ListaFicha
+    <ListaFicha cad={cad} galeria selecionado={app.registroId}
       largura={348}
       filtro={cad.filtro} onFiltro={cad.setFiltro}
       placeholder="Filtrar código, descrição ou tipo"
-      resumo={`${lista.length} de ${db.materiais.length} itens`}
-      rotuloNovo="+ novo item" onNovo={cad.criarNovo}
-      lista={lista.map(m => (
-        <div
-          key={m.id} onClick={() => cad.selecionar(m)}
-          className={'linha' + (f?.id === m.id ? ' sel' : '')} style={{ height: 40 }}
-        >
-          <span style={{ fontFamily: 'var(--font-heading)', fontSize: 14, width: 58, flex: 'none' }}>{m.cod}</span>
-          <span style={{
-            width: 30, height: 30, flex: 'none', background: '#fff', borderRadius: 12,
-            boxShadow: 'var(--el1)', overflow: 'hidden',
-            backgroundImage: m.imgData ? `url(${m.imgData})` : m.img ? `url(assets/${m.img}.png)` : undefined,
-            backgroundRepeat: 'no-repeat', backgroundPosition: 'center', backgroundSize: 'contain'
-          }} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="trunc" style={{ fontSize: 13, lineHeight: 1.2 }}>{m.desc}</div>
-            <div style={{ fontSize: 11, letterSpacing: '.02em', color: 'color-mix(in srgb, var(--color-text) 42%, transparent)' }}>
-              {m.tipo} · {m.unidade}
-            </div>
-          </div>
-          <span className="tnum" style={{ fontSize: 13, whiteSpace: 'nowrap', color: 'color-mix(in srgb, var(--color-text) 60%, transparent)' }}>
-            {fm(motor.custoBase(m))}
-          </span>
-        </div>
-      ))}
+      resumo={`${lista.length} de ${produtos.length} produtos`}
+      rotuloNovo="+ Novo produto" onNovo={cad.criarNovo}
+      lista={lista.length ? lista.map(m => (
+        <button key={m.id} className="catalog-tile" onClick={() => {cad.selecionar(m);setAba('Composição')}}>
+          {m.imgData || m.img ? <img src={m.imgData || `assets/${m.img}.png`} alt={m.desc}/> : <div className="product-art" style={{display:'grid',placeItems:'center',height:145}}>{Ico.itens(36)}</div>}
+          <span><small>{m.cod} / {m.serie}</small><strong>{m.desc}</strong><span className="tag" style={{background:m.composicao?.length?'var(--color-accent-100)':'var(--color-surface)',color:'var(--color-accent)'}}>{m.composicao?.length?'Composição cadastrada':'Custo manual'}</span></span>
+        </button>
+      )) : <Vazio>Nenhum produto encontrado. Ajuste a busca ou cadastre um produto.</Vazio>}
       ficha={f && (
         <div className="card">
-          <FichaHead titulo={existeNoBanco ? `Item ${f.cod}` : 'Novo item'}>
+          <FichaHead titulo={existeNoBanco ? `Produto ${f.cod}` : 'Novo produto'}>
             {existeNoBanco && !emUso && (
-              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }} onClick={() => void excluir()}>excluir</button>
+              <button className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 6px' }} hidden={!app.pode('excluir')} onClick={() => void excluir()}>excluir</button>
             )}
-            <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }} onClick={() => void salvar()}>Salvar item</button>
+            <button className="btn btn-primary" style={{ minHeight: 24, padding: '2px 11px', fontSize: 13 }} onClick={() => void salvar()}>Salvar produto</button>
           </FichaHead>
 
+          <div className="tabs" role="tablist" aria-label="Ficha do produto">{['Dados gerais', 'Composição', 'Preço', 'Imagem'].map(a => <button key={a} role="tab" aria-selected={aba === a} className="btn btn-ghost" onClick={() => setAba(a)}>{a}</button>)}</div>
+          <div className="notice" style={{ margin: 12 }}>{f.composicao?.length ? 'Custo calculado pela composição de matérias-primas + ferragens e acessórios.' : 'Custo manual pela unidade de referência. Cadastre a composição para calcular o consumo de fabricação.'} <strong>{fm(custoEst)} na medida padrão</strong></div>
           <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: '11px 13px' }}>
+            <div style={{ gridColumn: '1/-1', background: 'var(--color-surface)', borderLeft: '3px solid var(--color-accent)', padding: '10px 12px', fontSize: 13, lineHeight: 1.5 }}>
+              Produto disponível para venda no orçamento. Monte a composição com os insumos cadastrados em Matérias-primas.
+            </div>
+            <div role="tabpanel" aria-label="Dados gerais" style={{ display: aba === 'Dados gerais' ? 'contents' : 'none' }}>
             <Secao topo>Identificação</Secao>
 
-            <Campo label="Código"><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
+            <Campo label="Código *" erro={!f.cod.trim() ? 'Informe o código.' : undefined}><InputFicha valor={f.cod} onChange={v => cad.alterar({ cod: v.toUpperCase() })} /></Campo>
             <Campo label="Descrição" span={3}><InputFicha valor={f.desc} onChange={v => cad.alterar({ desc: v })} /></Campo>
 
-            <Campo label="Tipo de material" span={2}>
+            <Campo label="Tipo / grupo do produto" span={2}>
               <SelectComAdd
                 style={{ minHeight: 28, fontSize: 13 }}
                 valor={f.tipo} opcoes={db.tipos.map(t => ({ id: t, label: t }))}
@@ -138,7 +133,7 @@ export function Itens() {
               />
             </Campo>
 
-            <Campo label="Cobrado por">
+            <Campo label={f.composicao?.length ? 'Unidade de referência' : 'Base de custo sem composição'}>
               <select className="input" style={{ minHeight: 28, fontSize: 13 }} value={f.unidade}
                       onChange={e => cad.alterar({ unidade: e.target.value as Material['unidade'] })}>
                 <option value="KG">Quilo (kg)</option>
@@ -148,9 +143,17 @@ export function Itens() {
               </select>
             </Campo>
 
+            <Campo label="Classificação" span={2}>
+              <select className="input" value={f.categoria ?? 'produto'} onChange={e => cad.alterar({ categoria: e.target.value as Material['categoria'] })}>
+                <option value="produto">Produto para orçamento</option><option value="materia_prima">Matéria-prima</option>
+              </select>
+            </Campo>
+
             <Campo
               label="Cor / acabamento" span={2}
-              nota={cor
+              nota={f.composicao?.length
+                ? 'Acabamento exibido na proposta. O custo de pintura vem das matérias-primas da composição.'
+                : cor
                 ? `${cor.nome} — acréscimo ${fm(cor.precoKg)}/kg · ${fm(cor.precoM2)}/m² · kg final ${fm(db.config.precoKg + cor.precoKg)}`
                 : 'Sem cor vinculada — o kg fica no preço base.'}
             >
@@ -172,22 +175,25 @@ export function Itens() {
               </select>
             </Campo>
 
-            <Secao>Medidas e custo</Secao>
+            </div><div role="tabpanel" aria-label="Composição" style={{ display: aba === 'Composição' ? 'contents' : 'none' }}>
+            <ComposicaoProduto produto={f} onChange={composicao => cad.alterar({ composicao })} />
+
+            <Secao>{f.composicao?.length ? 'Medidas e fabricação' : 'Medidas e custo sem composição'}</Secao>
 
             <Campo label="Largura padrão (mm)"><InputFicha numero valor={f.larg ?? 0} onChange={v => cad.alterar({ larg: num(v) })} /></Campo>
             <Campo label="Altura padrão (mm)"><InputFicha numero valor={f.alt ?? 0} onChange={v => cad.alterar({ alt: num(v) })} /></Campo>
-            <Campo label={f.unidade === 'KG' ? 'Peso bruto por peça (kg)' : 'Peso por peça (kg)'}>
+            {!f.composicao?.length && <Campo label={f.unidade === 'KG' ? 'Peso bruto por peça (kg)' : 'Peso por peça (kg)'}>
               <InputFicha numero valor={f.pesoUnit} onChange={v => cad.alterar({ pesoUnit: num(v) })} />
-            </Campo>
+            </Campo>}
             <Campo label="Fator de correção (FC)"><InputFicha numero valor={f.fc} onChange={v => cad.alterar({ fc: num(v) })} /></Campo>
-            <Campo
+            {!f.composicao?.length && <Campo
               span={2}
               label={f.unidade === 'KG' ? 'Custo adicional por peça (R$)'
                 : f.unidade === 'M2' ? 'Custo por m² (R$)'
                 : f.unidade === 'ML' ? 'Custo por metro linear (R$)' : 'Custo por unidade (R$)'}
             >
               <InputFicha numero valor={f.preco} onChange={v => cad.alterar({ preco: num(v) })} />
-            </Campo>
+            </Campo>}
             <Campo label="M.O. instalação (R$/m²)"><InputFicha numero valor={f.moM2} onChange={v => cad.alterar({ moM2: num(v) })} /></Campo>
 
             <Secao>Acessórios avulsos deste item</Secao>
@@ -211,7 +217,7 @@ export function Itens() {
                         <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fm(ac?.preco ?? 0)}</td>
                         <td>
                           <input className="input tnum" type="number" style={{ minHeight: 22, padding: '1px 5px', fontSize: 13, textAlign: 'right' }}
-                                 value={a.qtd}
+                                 aria-label={`Quantidade de ${a.acesId}`} value={a.qtd}
                                  onChange={e => cad.alterar({ aces: f.aces.map((x, k) => (k === i ? { ...x, qtd: num(e.target.value) } : x)) })} />
                         </td>
                         <td className="tnum" style={{ textAlign: 'right', whiteSpace: 'nowrap' }}>{fm((ac?.preco ?? 0) * a.qtd)}</td>
@@ -249,6 +255,7 @@ export function Itens() {
               </div>
             </div>
 
+            </div><div role="tabpanel" aria-label="Imagem" style={{ display: aba === 'Imagem' ? 'contents' : 'none' }}>
             <Secao>Desenho da tipologia — sai no bloco da proposta</Secao>
             <div style={{ gridColumn: '1/-1', display: 'flex', gap: 14, alignItems: 'flex-start' }}>
               <div style={{
@@ -282,6 +289,7 @@ export function Itens() {
               </div>
             </div>
 
+            </div><div role="tabpanel" aria-label="Preço" style={{ display: aba === 'Preço' ? 'contents' : 'none' }}>
             <Secao>Encargos e preço</Secao>
             <Campo label="Imposto (%)"><InputFicha numero valor={f.imposto} onChange={v => cad.alterar({ imposto: num(v) })} /></Campo>
             <Campo label="Comissão (%)"><InputFicha numero valor={f.comissao} onChange={v => cad.alterar({ comissao: num(v) })} /></Campo>
@@ -293,14 +301,14 @@ export function Itens() {
               />
             </Campo>
 
-            <div style={{ gridColumn: '1/-1', display: 'flex', gap: 24, background: 'var(--color-surface)', padding: '9px 11px' }}>
+            </div><div style={{ gridColumn: '1/-1', display: 'flex', gap: 24, background: 'var(--color-surface)', padding: '9px 11px' }}>
               <Resumo label="Custo na medida padrão" valor={fm(custoEst)} />
               <Resumo label="Preço de venda" valor={fm(vendaEst)} />
               <Resumo label="Medida" valor={`${fn(f.larg ?? 0, 0)} × ${fn(f.alt ?? 0, 0)} mm`} />
             </div>
           </div>
         </div>
-      ) || <Vazio>Selecione um item na lista ou cadastre um novo.</Vazio>}
+      ) || <Vazio>Selecione um produto na lista ou cadastre um novo.</Vazio>}
     />
   )
 }

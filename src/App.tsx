@@ -15,7 +15,8 @@ export function App() {
   const iniciou = useRef(false)
 
   const recarregar = useCallback(async () => {
-    setDb(await chamar(ponte().carregar()))
+    try { setDb(await chamar(ponte().carregar())) }
+    catch(e) { if(e instanceof Error && /Sessão encerrada|Entre na sua conta/.test(e.message)){setUser(null);setDb(null)} throw e }
   }, [])
 
   const conectar = useCallback(async (host?: string) => {
@@ -23,7 +24,7 @@ export function App() {
     const st = await chamar(ponte().conectar(host))
     setConn(st)
     setEtapa('')
-    if (st.status === 'conectado') await recarregar()
+
   }, [recarregar])
 
   useEffect(() => {
@@ -34,16 +35,17 @@ export function App() {
     return off
   }, [conectar])
 
-  if (conn.status !== 'conectado' || !db) {
+  if (conn.status !== 'conectado') {
     return <TelaConexao conn={conn} etapa={etapa} onTentar={conectar} />
   }
 
   if (!user) {
-    return <TelaLogin db={db} onEntrar={setUser} conn={conn} />
+    return <TelaLogin onEntrar={async u => { await recarregar(); setUser(u) }} conn={conn} />
   }
 
+  if (!db) return <div>Carregando…</div>
   return (
-    <Provider db={db} user={user} onRecarregar={recarregar} onSair={() => setUser(null)}>
+    <Provider db={db} user={user} onRecarregar={recarregar} onSair={() => { void chamar(ponte().logout()); setUser(null); setDb(null) }}>
       <Shell />
     </Provider>
   )
@@ -123,15 +125,11 @@ function TelaConexao(p: {
 
 // -------------------------------------------------------------------- login
 
-function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void }) {
+function TelaLogin(p: { conn: ConnState; onEntrar: (u: Usuario) => Promise<void> }) {
   const [usuario, setUsuario] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
   const [ocupado, setOcupado] = useState(false)
-  // Fechada por padrão: quem usa o sistema todo dia já sabe o próprio usuário,
-  // e a lista aberta empurrava o rodapé para fora da janela em telas menores.
-  const [contasAbertas, setContasAbertas] = useState(false)
-
   const entrar = async () => {
     if (!usuario.trim()) return setErro('Informe o usuário.')
     if (!senha) return setErro('Informe a senha.')
@@ -139,7 +137,7 @@ function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void 
     try {
       const r = await chamar(ponte().login(usuario, senha))
       if (!r.ok || !r.usuario) setErro(r.erro ?? 'Não foi possível entrar.')
-      else p.onEntrar(r.usuario)
+      else await p.onEntrar(r.usuario)
     } catch (e) {
       setErro(e instanceof Error ? e.message : 'Falha ao falar com o banco.')
     } finally {
@@ -147,7 +145,6 @@ function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void 
     }
   }
 
-  const ativos = p.db.usuarios.filter(u => u.ativo)
 
   return (
     <div style={{
@@ -191,44 +188,11 @@ function TelaLogin(p: { db: DB; conn: ConnState; onEntrar: (u: Usuario) => void 
         </div>
 
         <div style={{ background: '#f8f9fa', borderTop: '1px solid var(--color-divider)' }}>
-          <button
-            type="button"
-            onClick={() => setContasAbertas(a => !a)}
-            aria-expanded={contasAbertas}
-            style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              width: '100%', padding: '13px 32px', border: 0, background: 'none',
-              font: 'inherit', fontSize: 12, color: '#5f6368', cursor: 'pointer', textAlign: 'left'
-            }}
-          >
-            <span>Contas cadastradas <span style={{ color: '#9aa0a6' }}>({ativos.length})</span></span>
-            <svg
-              width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"
-              style={{ transform: contasAbertas ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}
-            >
-              <path d="M7 10l5 5 5-5" stroke="#5f6368" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          {contasAbertas && ativos.map(u => (
-            <div
-              key={u.id}
-              onClick={() => { setUsuario(u.usuario); setErro('') }}
-              title="Preencher o usuário"
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12, height: 44, padding: '0 32px',
-                cursor: 'pointer', borderTop: '1px solid #ebedef'
-              }}
-            >
-              <span style={{ fontSize: 13, width: 62, color: '#5f6368' }}>{u.usuario}</span>
-              <span style={{ flex: 1, fontSize: 14 }}>{u.nome}</span>
-              <span style={{ fontSize: 12, color: '#5f6368' }}>{u.perfil}</span>
-            </div>
-          ))}
           <div style={{
             display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: 40,
             padding: '0 32px', borderTop: '1px solid var(--color-divider)', fontSize: 12, color: '#9aa0a6'
           }}>
-            <span>{p.db.materiais.length} itens · {p.db.orcamentos.length} propostas</span>
+            <span>Acesso identificado e protegido</span>
             <span>servidor {p.conn.host}</span>
           </div>
 

@@ -1,6 +1,6 @@
 {
   "name": "estrudena",
-  "version": "1.2.4",
+  "version": "1.3.0",
   "_comentario": "Descricao sem acentos de proposito: vai como argumento de linha de comando para o makensis e acaba nas propriedades do .exe, onde acentos chegam corrompidos.",
   "description": "Sistema Estrudena - Orcamento, Proposta e Separacao de Material",
   "author": "Estrudena",
@@ -14,6 +14,8 @@
     "build": "npm run typecheck && npm run build:main && npm run build:renderer",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.electron.json",
     "teste": "node scripts/teste-banco.mjs",
+    "teste:ux": "node scripts/teste-ux.mjs",
+    "teste:catalogo": "node scripts/teste-catalogo.mjs",
     "teste:telas": "node scripts/diagnostico.mjs",
     "teste:fluxo": "node scripts/teste-fluxo-proposta.mjs pdfs-fluxo",
     "teste:pdf": "node scripts/gerar-pdf-teste.mjs pdfs",
@@ -29,7 +31,9 @@
     "icone": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/gerar-icone.ps1",
     "prepare:build": "node scripts/preparar-wincodesign.mjs",
     "dist": "npm run build && npm run prepare:build && electron-builder --win nsis --publish never",
-    "dist:full": "npm run fetch:pg && npm run dist"
+    "dist:full": "npm run fetch:pg && npm run dist",
+    "teste:negocio": "node scripts/teste-catalogo.mjs scripts/teste-negocio.ts",
+    "teste:permissoes": "node scripts/teste-catalogo.mjs scripts/teste-permissoes.ts"
   },
   "dependencies": {
     "bcryptjs": "2.4.3",

@@ -1,7 +1,8 @@
+import type { MatrizPermissoes } from './permissoes'
 import type {
   Acessorio, Cliente, Config, ConnState, Cor, DadosCnpj, DB, EstadoAtualizacao,
   Instalador, Kit, KitVenda, LoginResult, Material, Orcamento, Separacao, Usuario,
-  VersaoPublicada
+  VersaoPublicada, ComandoNegocio
 } from './shared/types'
 
 type Resposta<T> = { ok: true; dados: T } | { ok: false; erro: string }
@@ -12,8 +13,11 @@ interface Ponte {
   onProgresso(cb: (etapa: string) => void): () => void
   onEstado(cb: (estado: ConnState) => void): () => void
   login(usuario: string, senha: string): Promise<Resposta<LoginResult>>
+  logout(): Promise<Resposta<void>>
+  negocio(cmd: ComandoNegocio): Promise<Resposta<void>>
+  salvarPermissoes(matriz: MatrizPermissoes, versao: number): Promise<Resposta<void>>
   carregar(): Promise<Resposta<DB>>
-  salvarConfig(cfg: Config): Promise<Resposta<void>>
+  salvarConfig(cfg: Config, anterior?: Config): Promise<Resposta<void>>
   salvarMaterial(m: Material): Promise<Resposta<void>>
   salvarCor(x: Cor): Promise<Resposta<void>>
   salvarAcessorio(x: Acessorio): Promise<Resposta<void>>

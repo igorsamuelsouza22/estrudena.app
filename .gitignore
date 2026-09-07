@@ -14,4 +14,7 @@ capturas/
 
 pdfs/
 pdfs-fluxo/
-documentos/
+/documentos/
+
+# Backups locais do banco (dados dos clientes).
+backups/

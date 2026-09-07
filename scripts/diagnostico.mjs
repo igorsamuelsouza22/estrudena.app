@@ -54,7 +54,7 @@ app.whenReady().then(async () => {
   await espera(2500)
 
   const rotulos = ['Visão geral','Orçamento','Propostas','Clientes','Separação',
-    'Itens e materiais','Cores e pintura','Acessórios','Kits de ferragem','Kits de venda',
+    'Produtos','Matérias-primas','Cores e pintura','Acessórios','Kits de ferragem','Kits de venda',
     'Instaladores','Relatórios','Usuários','Configurações']
 
   let erros = 0
@@ -107,7 +107,7 @@ app.whenReady().then(async () => {
   }
   await espera(800)
   const modal = await win.webContents.executeJavaScript(\`(() => {
-    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '+ Inserir item')
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '+ Inserir produto')
     if (!b) return 'botão ausente'
     b.click()
     return 'clicado'

@@ -1,4 +1,6 @@
 import type { DB, KitVenda, Material, Orcamento, OrcItem } from './shared/types'
+import { catalogoDoPedido } from './historico'
+import { ehMateriaPrima } from './catalogo'
 
 /**
  * Motor de cálculo — derivado da planilha real da empresa
@@ -63,6 +65,48 @@ export class Motor {
     }, 0)
   }
 
+  /** Preço por unidade de compra do insumo; não inclui encargos de venda. */
+  custoMateriaPrima(m: Material): number {
+    const cor = this.cor(m.corId)
+    return n(m.preco) + (m.unidade === 'KG' ? n(cor?.precoKg) : m.unidade === 'M2' ? n(cor?.precoM2) : 0)
+  }
+
+  composicaoProduto(m: Material, larg = n(m.larg), alt = n(m.alt)) {
+    return (m.composicao ?? []).map(it => {
+      const material = this.mat(it.materialId)
+      if (!ehMateriaPrima(material)) throw new Error(`Matéria-prima indisponível na composição de ${m.cod}.`)
+      const fator = it.base === 'M2' ? larg * alt / 1e6 : it.base === 'ML' ? larg / 1000 : 1
+      const qtd = n(it.qtd) * fator
+      return { material, qtd, custo: qtd * this.custoMateriaPrima(material),
+        kg: qtd * (material.unidade === 'KG' ? 1 : n(material.pesoUnit)) }
+    })
+  }
+
+  /** Custo de uma peça nas medidas solicitadas, com ferragens e acessórios. */
+  custoNaMedida(m: Material, larg = n(m.larg), alt = n(m.alt)): number {
+    const ferragens = this.kitCusto(m.kitId) + this.acesCusto(m.aces)
+    if (m.composicao?.length) return this.composicaoProduto(m, larg, alt).reduce((s, it) => s + it.custo, 0) + ferragens
+    const cor = this.cor(m.corId)
+    if (m.unidade === 'KG') return n(m.pesoUnit) * (n(this.db.config.precoKg) + n(cor?.precoKg)) + ferragens
+    if (m.unidade === 'M2') return (n(m.preco) + n(cor?.precoM2)) * larg * alt / 1e6 + ferragens
+    if (m.unidade === 'ML') return n(m.preco) * larg / 1000 + ferragens
+    return n(m.preco) + ferragens
+  }
+
+  materiaisDoPedido(q: Orcamento): { material: Material; qtd: number }[] {
+    if (q.referenciaPrecos) return new Motor(catalogoDoPedido(this.db, q)).materiaisDoPedido({ ...q, referenciaPrecos: undefined })
+    const soma = new Map<string, { material: Material; qtd: number }>()
+    for (const it of q.itens) {
+      const produto = this.mat(it.matId)
+      if (!produto?.composicao?.length) continue
+      for (const c of this.composicaoProduto(produto, it.larg ?? n(produto.larg), it.alt ?? n(produto.alt))) {
+        const anterior = soma.get(c.material.id)
+        soma.set(c.material.id, { material: c.material, qtd: (anterior?.qtd ?? 0) + c.qtd * n(it.qtd) })
+      }
+    }
+    return [...soma.values()].sort((a, b) => a.material.cod.localeCompare(b.material.cod))
+  }
+
   kitCusto(id: string): number {
     const k = this.kit(id)
     return k ? this.acesCusto(k.itens) : 0
@@ -71,6 +115,7 @@ export class Motor {
   /** Custo unitário do item no cadastro, na medida padrão. */
   custoBase(m: Material | undefined): number {
     if (!m) return 0
+    if (m.composicao?.length) return this.custoNaMedida(m)
     const cfg = this.db.config
     const cor = this.cor(m.corId)
     const kgP = n(cfg.precoKg) + (cor ? n(cor.precoKg) : 0)
@@ -81,6 +126,7 @@ export class Motor {
   }
 
   calc(q: Orcamento): Apuracao {
+    if (q.referenciaPrecos) return new Motor(catalogoDoPedido(this.db, q)).calc({ ...q, referenciaPrecos: undefined })
     const cfg = this.db.config
     const rows: LinhaCalc[] = []
     let custoMat = 0, m2 = 0, kg = 0, vendaMat = 0, pecas = 0
@@ -98,7 +144,11 @@ export class Motor {
       const kitU = this.kitCusto(m?.kitId ?? '') + this.acesCusto(m?.aces)
 
       let cm = 0, ikg = 0
-      if (m?.unidade === 'KG') {
+      if (m?.composicao?.length) {
+        const componentes = this.composicaoProduto(m, L, H)
+        cm = componentes.reduce((s, c) => s + c.custo, 0) * qtd
+        ikg = componentes.reduce((s, c) => s + c.kg, 0) * qtd
+      } else if (m?.unidade === 'KG') {
         ikg = n(m.pesoUnit) * qtd
         cm = ikg * kgPreco
       } else if (m?.unidade === 'M2') {
@@ -163,12 +213,13 @@ export class Motor {
       const m = this.mat(c.matId)
       if (!m) continue
       const qtd = n(c.qtd)
-      const cu = this.custoBase(m) * (m.unidade === 'M2' ? n(m.larg) * n(m.alt) / 1e6 : 1)
+      const cu = this.custoNaMedida(m)
       const mku = (m.markup == null ? n(cfg.markup) : n(m.markup)) / 100
       custo += cu * qtd
       venda += (mku < 0.98 ? cu / (1 - mku) : cu) * qtd
       m2 += n(m.larg) * n(m.alt) / 1e6 * qtd
-      kg += (m.unidade === 'KG' ? n(m.pesoUnit) : 0) * qtd
+      kg += (m.composicao?.length ? this.composicaoProduto(m).reduce((s, c) => s + c.kg, 0)
+        : m.unidade === 'KG' ? n(m.pesoUnit) : 0) * qtd
       pecas += qtd
     }
     return { custo, venda, m2, kg, pecas }
@@ -192,5 +243,5 @@ export function markupDaMargem(margem: number, imposto: number, comissao: number
 
 export function proxRev(rev: string): string {
   const num = parseInt(String(rev || '').replace(/\D/g, ''), 10)
-  return 'Rev. ' + String((Number.isFinite(num) ? num : 0) + 1).padStart(2, '0')
+  return 'rev' + String((Number.isFinite(num) ? num : 0) + 1)
 }
