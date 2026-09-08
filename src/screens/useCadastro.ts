@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef, type SetStateAction } from 'react'
 import { useApp } from '../store'
+import { usePendenciaAtualizacao } from '../atualizacao'
 import { guardarLocal, lerLocal } from '../rascunhos'
 
 /** Um rascunho por registro e usuário; navegar nunca descarta trabalho pendente. */
@@ -15,6 +16,7 @@ export function useCadastro<T extends { id: string }>(lista: T[], novo: () => T)
   const salvo = form ? lista.find(x => x.id === form.id) : null
   const igual = (a: unknown, b: unknown) => JSON.stringify(a, (k, v) => k === 'atualizadoEm' ? undefined : v) === JSON.stringify(b, (k, v) => k === 'atualizadoEm' ? undefined : v)
   const pendente = !!form && !igual(form, salvo)
+  usePendenciaAtualizacao('cadastro com alterações não salvas',pendente)
   useEffect(() => { if (form && salvo && !pendente && JSON.stringify(form) !== JSON.stringify(salvo)) setFormState(structuredClone(salvo)) }, [salvo, pendente])
   useEffect(() => {
     if (!form && lista.length) setFormState(structuredClone(lista[0]))

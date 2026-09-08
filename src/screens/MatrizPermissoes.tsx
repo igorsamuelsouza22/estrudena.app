@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { chamar, ponte } from '../api'
 import { useApp } from '../store'
+import { usePendenciaAtualizacao } from '../atualizacao'
 import { Card, Modal } from '../ui'
 import { alterarPermissao, matrizPadrao, PERFIS, RECURSOS, type PoliticaPermissoes } from '../permissoes'
 export function MatrizPermissoes(){
@@ -12,6 +13,7 @@ export function MatrizPermissoes(){
  const [erro,setErro]=useState('')
  const [restaurar,setRestaurar]=useState(false)
  const pendente=JSON.stringify(matriz)!==JSON.stringify(base.matriz)
+ usePendenciaAtualizacao('matriz com alterações não salvas',pendente,salvando)
  useEffect(()=>{if(!pendente&&!salvando){setBase(structuredClone(atual));setMatriz(structuredClone(atual.matriz))}},[app.db.permissoes,pendente,salvando])
  const salvar=async()=>{
   if(salvando||!pendente)return

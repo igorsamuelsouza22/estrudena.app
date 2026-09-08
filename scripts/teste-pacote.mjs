@@ -12,7 +12,8 @@ const value=key=>cred.match(new RegExp(key+"\\s*=\\s*'([^']+)'"))[1]
 const schema='estrudena_teste_pacote_'+randomBytes(8).toString('hex')
 const c=new Client({host:'127.0.0.1',port:5432,database:value('DB_NAME'),user:value('DB_USER'),password:value('DB_PASSWORD')})
 const exe=resolve('release/win-unpacked/Sistema Estrudena.exe')
-assert.ok(existsSync(exe));assert.ok(existsSync('release/win-unpacked/resources/pgsql/bin/postgres.exe'))
+assert.ok(existsSync(exe));assert.ok(existsSync('release/win-unpacked/resources/pgsql.7z'))
+assert.ok(existsSync('release/win-unpacked/resources/app-update.yml'))
 const dados=mkdtempSync(join(tmpdir(),'estrudena-pacote-'))
 await c.connect();await c.query(`CREATE SCHEMA "${schema}"`)
 let app

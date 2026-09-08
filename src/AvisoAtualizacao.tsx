@@ -18,8 +18,7 @@ type Fase = 'ocioso' | 'baixando' | 'pronto' | 'instalando' | 'erro'
  * O instalador é baixado em segundo plano assim que a novidade aparece, para
  * que instalar seja imediato quando a pessoa quiser. A instalação em si nunca
  * acontece sozinha: troca arquivos em uso e derrubaria o sistema no meio de um
- * orçamento. Quem não quiser parar agora pode simplesmente ignorar — ao fechar
- * o sistema, ele oferece instalar.
+ * orçamento. Quem não quiser parar agora continua trabalhando e atualiza depois.
  */
 export function AvisoAtualizacao() {
   const [estado, setEstado] = useState<EstadoAtualizacao | null>(null)
@@ -96,12 +95,15 @@ export function AvisoAtualizacao() {
   if (!nova || dispensado === nova.versao) return null
 
   const instalar = async () => {
+    setRecado('')
     setFase('instalando')
     try {
       await chamar(ponte().abrirInstalador(baixado))
     } catch (e) {
-      setRecado(e instanceof Error ? e.message : 'Não consegui abrir o instalador.')
-      setFase('erro')
+      const mensagem=e instanceof Error ? e.message : 'Não consegui aplicar a atualização.'
+      setRecado(mensagem)
+      if(mensagem.startsWith('Antes de atualizar:'))setFase('pronto')
+      else {setBaixado('');baixando.current='';setFase('erro')}
     }
   }
 
@@ -140,12 +142,12 @@ export function AvisoAtualizacao() {
             : 'Baixando…'}
         </span>
       )}
-      {fase === 'erro' && (
-        <span style={{ fontSize: 12, color: 'var(--color-accent-800)', whiteSpace: 'nowrap' }}>{recado}</span>
+      {recado && (
+        <span role="alert" style={{ fontSize: 12, color: 'var(--color-accent-800)', maxWidth: 440 }}>{recado}</span>
       )}
       {fase === 'pronto' && (
         <span style={{ fontSize: 12, color: muted45, whiteSpace: 'nowrap' }}>
-          Baixado — instala em menos de um minuto
+          Atualização pronta
         </span>
       )}
 
@@ -160,15 +162,15 @@ export function AvisoAtualizacao() {
         className="btn btn-ghost" style={{ fontSize: 13, padding: '2px 8px' }}
         disabled={fase === 'instalando'}
         onClick={() => setDispensado(nova.versao)}
-        title="O sistema oferece instalar quando você fechar"
-      >agora não</button>
+        title="Continue trabalhando e atualize quando for conveniente"
+      >Mais tarde</button>
 
       <button
         className="btn btn-primary" style={{ minHeight: 28, padding: '3px 12px', fontSize: 13 }}
         disabled={fase === 'baixando' || fase === 'instalando'}
-        onClick={() => void instalar()}
+        onClick={() => {if(fase==='erro'){baixando.current='';setRecado('');void conferir()}else void instalar()}}
       >
-        {fase === 'baixando' ? 'Baixando…' : fase === 'instalando' ? 'Abrindo…' : 'Instalar agora'}
+        {fase === 'baixando' ? 'Baixando…' : fase === 'instalando' ? 'Atualizando…' : fase === 'erro' ? 'Tentar novamente' : 'Atualizar e reiniciar'}
       </button>
     </div>
   )

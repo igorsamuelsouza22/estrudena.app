@@ -159,3 +159,13 @@ Administradores mantêm acesso completo e exclusividade sobre usuários e matriz
 Os padrões preservam os acessos efetivos anteriores: Vendedor trabalha com valores, orçamentos, clientes, aceite inicial e consulta/planejamento de pedidos; Produção consulta e planeja pedidos e executa produção, entrega e instalação, sem valores comerciais. Use **Restaurar padrão** para preencher a matriz e revise antes de salvar.
 
 `npm run teste:permissoes` valida persistência, concessão/revogação, dependências, filtragem, concorrência, auditoria e proteção de administradores em um schema temporário. `npm run teste:ux` também altera a matriz pela tela, testa a API com outro perfil e verifica a atualização da sessão aberta.
+
+## Atualização a partir da 1.3.1
+
+O `electron-updater` aplica instaladores NSIS com **Atualizar e reiniciar**. A instalação ocorre somente por ação explícita, após conferir edições e gravações em andamento. Sair do aplicativo deixa a atualização para depois. A instalação por máquina ainda pode exigir UAC.
+
+O GitHub precisa receber o `.exe`, `latest.yml` e `.exe.blockmap` gerados pelo mesmo build. A consulta das versões mantém o cache compartilhado; o download usa o feed HTTPS da tag selecionada. O canal pelo banco verifica SHA-256 e entrega o arquivo ao updater por um feed temporário restrito a loopback com endereço aleatório. O updater confere SHA-512; o app confere novamente antes de instalar e aceita apenas o caminho registrado no processo principal.
+
+PostgreSQL vai compactado em `resources/pgsql.7z`. O instalador extrai e configura o runtime na instalação/reparação do servidor. A partir do desinstalador da 1.3.1, atualizações preservam `resources/pgsql` ao trocar os arquivos do app e não removem nem reconfiguram seu serviço. A primeira atualização de versões anteriores ainda usa o desinstalador antigo. Consulte [as notas de transição](docs/versao-1.3.1.md).
+
+Testes: `npm run teste:updater` (Electron e banco isolados; instalação interceptada), `npm run teste:pacote` e `node scripts/teste-preservacao-postgres.mjs` (NSIS com arquivos fictícios; sem registro/serviços). Os testes Electron usam `PLAYWRIGHT_PATH` quando o módulo não está no projeto.

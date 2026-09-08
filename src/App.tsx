@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { chamar, ponte } from './api'
+import { EVENTO_ATUALIZAR } from './atualizacao'
 import { Provider } from './store'
 import { Shell } from './Shell'
 import type { ConnState, DB, Usuario, VersaoPublicada } from './shared/types'
@@ -13,6 +14,7 @@ export function App() {
   const [db, setDb] = useState<DB | null>(null)
   const [user, setUser] = useState<Usuario | null>(null)
   const iniciou = useRef(false)
+  useEffect(()=>{const pronto=(e:Event)=>{(e as CustomEvent).detail.pronto=true};window.addEventListener(EVENTO_ATUALIZAR,pronto);return()=>window.removeEventListener(EVENTO_ATUALIZAR,pronto)},[])
 
   const recarregar = useCallback(async () => {
     try { setDb(await chamar(ponte().carregar())) }
@@ -288,14 +290,14 @@ function VerificarAtualizacao() {
       {fase === 'nova' ? (
         <>
           <span className="trunc">Versão {nova!.versao} disponível</span>
-          <button type="button" style={link} onClick={() => void baixar()}>baixar e instalar</button>
+          <button type="button" style={link} onClick={() => void baixar()}>baixar atualização</button>
         </>
       ) : fase === 'baixando' ? (
         <span className="tnum">Baixando {pct}%…</span>
       ) : fase === 'pronto' ? (
         <>
-          <span className="trunc">Baixado. O sistema fecha para instalar.</span>
-          <button type="button" style={link} onClick={() => void instalar()}>instalar agora</button>
+          <span className="trunc">Atualização pronta.</span>
+          <button type="button" style={link} onClick={() => void instalar()}>Atualizar e reiniciar</button>
         </>
       ) : (
         <>

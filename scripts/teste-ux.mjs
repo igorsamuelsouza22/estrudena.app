@@ -159,6 +159,8 @@ try {
   await page.getByRole('dialog').waitFor({state:'hidden'})
   await navConfig.getByRole('button',{name:/Empresa/}).press('Enter')
   await page.getByRole('textbox',{name:'Telefone',exact:true}).fill('(11) 99999-1010')
+  const protecaoConfig=await page.evaluate(()=>window.estrudena.abrirInstalador('nao-executar.exe'))
+  assert.equal(protecaoConfig.ok,false);assert.match(protecaoConfig.erro,/configurações com alterações/)
   await page.locator('nav[aria-label="Áreas do sistema"]').getByRole('button',{name:'Início',exact:true}).press('Enter')
   await page.locator('nav[aria-label="Áreas do sistema"]').getByRole('button',{name:'Configurações',exact:true}).press('Enter')
   assert.equal(await page.getByRole('textbox',{name:'Telefone',exact:true}).inputValue(),'(11) 99999-1010')

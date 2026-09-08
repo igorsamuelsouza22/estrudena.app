@@ -11,7 +11,7 @@ Um computador da empresa é o **Servidor**: ele guarda o banco de dados.
 Todos os outros são **Terminais**: rodam o mesmo programa e leem/gravam no banco
 do servidor pela rede.
 
-O mesmo arquivo `Sistema-Estrudena-Setup-1.3.0.exe` instala os dois. A única
+O mesmo arquivo `Sistema-Estrudena-Setup-1.3.1.exe` instala os dois. A única
 escolha durante a instalação é essa. Não há nada para configurar depois.
 
 ```
@@ -62,7 +62,7 @@ autoridade certificadora, com custo anual). Com ele em mãos, é só configurar 
 Escolha o computador que fica **ligado durante o expediente**. De preferência um
 que não seja desligado no meio do dia.
 
-1. Copie `Sistema-Estrudena-Setup-1.3.0.exe` para esse computador.
+1. Copie `Sistema-Estrudena-Setup-1.3.1.exe` para esse computador.
 2. Clique com o botão direito → **Executar como administrador**.
 3. Na tela **Função desta máquina**, escolha **Servidor**.
 4. Avance até o fim.
@@ -92,7 +92,7 @@ Os dados ficam em `C:\ProgramData\Estrudena\pgdata`.
 
 Em cada uma das outras máquinas:
 
-1. Execute o mesmo `Sistema-Estrudena-Setup-1.3.0.exe`.
+1. Execute o mesmo `Sistema-Estrudena-Setup-1.3.1.exe`.
 2. Escolha **Terminal**.
 3. Avance até o fim.
 
@@ -174,40 +174,29 @@ administrador e use **Configurações → Carregar dados de exemplo**.
 
 ## Atualizar para uma versão nova
 
-O terminal cuida disso sozinho. Ao abrir o sistema — e a cada 30 minutos, ou
-quando a janela volta ao foco — ele confere se há versão nova. Havendo, **já
-baixa o instalador em segundo plano** e mostra a faixa:
+A partir da **1.3.1**, o aplicativo baixa a atualização em segundo plano e mostra
+**Atualizar e reiniciar**. Ao clicar, ele confere alterações não salvas, aplica
+o instalador em modo silencioso e solicita a reabertura. O Windows ainda pode
+pedir autorização de administrador.
 
-> **Versão X.Y.Z disponível** · Baixando 45% · 48 de 108 MB · *agora não*
+**Mais tarde** deixa você continuar trabalhando. Fechar o aplicativo não inicia
+uma instalação. O download fica em cache e é validado novamente na próxima consulta.
 
-com uma barra de progresso na base da faixa. Ao terminar:
+A 1.3.1 é uma versão de transição: quem está em versões anteriores ainda precisa
+passar pelo instalador atual uma vez. Atualize servidor e terminais e preserve
+um backup antes de começar. [Instruções da transição](docs/versao-1.3.1.md).
 
-> **Versão X.Y.Z disponível** · Baixado — instala em menos de um minuto ·
-> *agora não* · **Instalar agora**
+O banco, as configurações e os acessos são preservados. Nas atualizações a partir
+do instalador 1.3.1, os arquivos do runtime PostgreSQL também são preservados e sua
+configuração de serviço e firewall não é refeita. Reparações continuam disponíveis
+pelo roteiro de suporte.
 
-São dois caminhos, e nenhum deles interrompe o trabalho:
-
-- **Instalar agora** — o instalador abre na hora (já está baixado), o Windows
-  pede a confirmação de administrador e pronto.
-- **agora não** — a faixa some e a pessoa continua trabalhando. **Ao fechar o
-  sistema**, ele pergunta se quer instalar a atualização que já está baixada.
-  Aí ninguém perde nada, porque já estava saindo mesmo.
-
-A instalação nunca acontece sozinha, por dois motivos: ela troca arquivos em uso
-e fecharia o sistema no meio de um orçamento, e o Windows sempre vai pedir a
-confirmação de administrador de qualquer forma.
-
-**Atualizar não é reinstalar.** O instalador troca os arquivos no lugar,
-preserva o banco de dados, os atalhos e a pasta — e, por ser atualização, nem
-pergunta de novo se a máquina é Servidor ou Terminal: ele reconhece sozinho.
-
-Há dois caminhos para a versão nova chegar. Os terminais consultam os dois e
-ficam com a mais recente.
+O GitHub e o servidor são consultados; o aplicativo escolhe a versão mais recente.
 
 ### Pelo GitHub (quem desenvolve publica direto)
 
 1. Publique uma release no repositório com a etiqueta no formato `v1.2.3` e o
-   `Sistema-Estrudena-Setup-1.3.0.exe` anexado.
+   `Sistema-Estrudena-Setup-1.3.1.exe`, `latest.yml` e o `.exe.blockmap` do mesmo build anexados.
 2. Uma única vez, em **Configurações → Atualização do sistema**, preencha o campo
    **Repositório no GitHub** com `usuario/repositorio`.
 

@@ -1,3 +1,4 @@
+import { Atualizador } from './atualizador'
 import { lerPermissoes, salvarPermissoes, exigirPermissao } from './db/permissoes'
 import { permissaoComando, type Permissao, type MatrizPermissoes } from '../src/permissoes'
 import path from 'node:path'
@@ -23,17 +24,7 @@ const VERSAO = __VERSAO_APP__
 const DEV_URL = process.env.ESTRUDENA_DEV_URL
 let janela: BrowserWindow | null = null
 
-/**
- * Atualização já baixada e esperando para ser instalada.
- *
- * Fica aqui no processo principal porque quem decide o momento é o fechamento
- * da janela: instalar troca arquivos em uso e derruba o sistema, então o
- * momento certo é quando a pessoa já está saindo.
- */
-let atualizacaoPendente: { versao: string; caminho: string } | null = null
-/** Evita reentrar no diálogo de saída enquanto ele já está aberto. */
-let confirmandoSaida = false
-
+const atualizador = new Atualizador(p => janela?.webContents.send('atualizacao:progresso', p))
 function criarJanela(): void {
   janela = new BrowserWindow({
     width: 1440,
@@ -72,36 +63,6 @@ function criarJanela(): void {
   } else {
     janela.loadFile(path.join(__dirname, '../dist/index.html'))
   }
-
-  /**
-   * Se houver atualização baixada, o fechamento é a hora certa de instalar:
-   * ninguém perde trabalho, porque a pessoa já estava saindo.
-   */
-  janela.on('close', evento => {
-    if (!atualizacaoPendente || confirmandoSaida) return
-    evento.preventDefault()
-    confirmandoSaida = true
-
-    const pendente = atualizacaoPendente
-    void dialog.showMessageBox(janela!, {
-      type: 'question',
-      buttons: ['Instalar agora', 'Sair sem instalar'],
-      defaultId: 0,
-      cancelId: 1,
-      title: 'Atualização pronta',
-      message: `A versão ${pendente.versao} já está baixada nesta máquina.`,
-      detail: 'Instalar agora? O Windows vai pedir a confirmação de administrador. '
-        + 'Leva menos de um minuto e os dados são preservados.'
-    }).then(async escolha => {
-      if (escolha.response === 0) {
-        const erro = await shell.openPath(pendente.caminho)
-        // Falhou ao abrir: melhor sair do que prender a pessoa no sistema.
-        if (erro) console.error('não consegui abrir o instalador:', erro)
-      }
-      atualizacaoPendente = null
-      janela?.destroy()
-    })
-  })
 
   janela.on('closed', () => { janela = null })
 }
@@ -330,35 +291,27 @@ function registrarIpc(): void {
 
   handler('atualizacao:remover', (versao: string) => versoes.removerVersao(versao))
 
-  /**
-   * Baixa o instalador do servidor e abre para o usuário instalar.
-   * Nunca executa sozinho: o Windows ainda pede confirmação de administrador.
-   */
-  /** Baixa da origem indicada: `url` presente significa release do GitHub. */
-  handler('atualizacao:baixar', async (versao: string, url?: string, arquivo?: string) => {
-    const pasta = path.join(app.getPath('downloads'), 'Sistema Estrudena')
-    const caminho = url
-      ? await github.baixarRelease(
-          url, arquivo ?? `Sistema-Estrudena-Setup-${versao}.exe`, pasta,
-          (recebido, total) => janela?.webContents.send('atualizacao:progresso', { recebido, total })
-        )
-      : await versoes.baixarVersao(versao, pasta)
-    atualizacaoPendente = { versao, caminho }
-    return caminho
+  // A origem e o arquivo são resolvidos no processo principal. A interface
+  // não pode executar um caminho arbitrário nem escolher uma URL de download.
+  handler('atualizacao:baixar', async (versao: string, url?: string) => {
+    if(!/^\d+\.\d+\.\d+$/.test(versao)||versoes.compararVersoes(versao,VERSAO)<=0)throw Error('Escolha uma versão mais recente que a instalada.')
+    const repo=github.normalizarRepo(await versoes.repoConfigurado())
+    const v=url ? await github.ultimaRelease(repo) : await versoes.versaoPublicada()
+    if(!v||v.versao!==versao)throw Error('Esta versão não está mais disponível. Verifique novamente.')
+    return atualizador.baixar(v,repo,pasta=>versoes.baixarVersao(v.versao,pasta))
   })
-
-  handler('atualizacao:pendente', async () => atualizacaoPendente)
-
+  handler('atualizacao:pendente', async () => atualizador.pronto)
   handler('atualizacao:abrir', async (caminho: string) => {
-    const erro = await shell.openPath(caminho)
-    if (erro) throw new Error(erro)
-    // Instalou a pedido: limpa a pendência antes de sair, senão o fechamento
-    // dispararia o diálogo perguntando de novo se quer instalar.
-    atualizacaoPendente = null
-    // Fecha o sistema: o instalador precisa substituir os arquivos em uso.
-    setTimeout(() => app.quit(), 1200)
+    if(!janela)throw Error('Abra o aplicativo antes de atualizar.')
+    const resultado=await janela.webContents.executeJavaScript(`(() => {
+      const resultado={pronto:false,pendencias:[]};
+      window.dispatchEvent(new CustomEvent('estrudena:antes-atualizar',{detail:resultado}));
+      return resultado;
+    })()`)
+    if(!resultado.pronto)throw Error('Aguarde a tela terminar de carregar antes de atualizar.')
+    if(resultado.pendencias.length)throw Error('Antes de atualizar: '+[...new Set(resultado.pendencias)].join(' · ')+'. Salve ou descarte as alterações e tente novamente.')
+    await atualizador.instalar(caminho)
   })
-
   handler('atualizacao:mostrarPasta', async (caminho: string) => {
     shell.showItemInFolder(caminho)
   })

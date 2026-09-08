@@ -15,9 +15,8 @@ files:
 
 extraResources:
   # Binários do PostgreSQL — só existem se `npm run fetch:pg` já rodou.
-  - from: resources/pgsql
-    to: pgsql
-    filter: ['**/*']
+  - from: resources/pgsql.7z
+    to: pgsql.7z
   - from: build/setup-servidor.ps1
     to: setup-servidor.ps1
   # Roteiro de suporte: confere e corrige o servidor sem reinstalar nada.
@@ -46,6 +45,10 @@ nsis:
   runAfterFinish: true
 
 compression: maximum
+publish:
+  provider: github
+  owner: igorsamuelsouza22
+  repo: estrudena.app
 asar: true
 asarUnpack:
   - node_modules/pg/**

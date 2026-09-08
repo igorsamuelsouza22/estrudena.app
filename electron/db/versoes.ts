@@ -170,7 +170,7 @@ export async function baixarVersao(versao: string, pasta: string): Promise<strin
   }
 
   fs.mkdirSync(pasta, { recursive: true })
-  const destino = path.join(pasta, linha.arquivo)
+  const destino = path.join(pasta, `Sistema-Estrudena-Setup-${versao}.exe`)
   fs.writeFileSync(destino, conteudo)
   return destino
 }

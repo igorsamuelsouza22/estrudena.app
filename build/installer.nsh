@@ -93,9 +93,24 @@ local — não há nada para configurar."
   FunctionEnd
 
   !macro customInstall
+    ; Atualização comum mantém binários, serviço, cluster e firewall.
+    ; O arquivo compactado só é extraído na instalação/reparação do servidor.
+    IfFileExists "$INSTDIR\resources\pgsql\bin\postgres.exe" 0 estrudenaVerificarPapel
+    IfFileExists "C:\ProgramData\Estrudena\pgdata\PG_VERSION" estrudenaBancoPronto estrudenaVerificarPapel
+    estrudenaVerificarPapel:
+    ${If} $EhServidor == ""
+      StrCpy $EhServidor "0"
+      IfFileExists "C:\ProgramData\Estrudena\pgdata\PG_VERSION" 0 +2
+        StrCpy $EhServidor "1"
+    ${EndIf}
     ${If} $EhServidor == "1"
       SetDetailsPrint both
       DetailPrint "Instalando o banco de dados PostgreSQL — isso leva cerca de um minuto…"
+      SetOutPath "$INSTDIR\resources"
+      Nsis7z::Extract "$INSTDIR\resources\pgsql.7z"
+      IfFileExists "$INSTDIR\resources\pgsql\bin\postgres.exe" estrudenaPgExtraido 0
+        Abort "Não foi possível extrair o PostgreSQL. Execute novamente o instalador."
+      estrudenaPgExtraido:
 
       ; O instalador é 32-bit: sem desligar o redirecionamento, $SYSDIR aponta
       ; para SysWOW64 e chamaríamos o PowerShell 32-bit, onde Get-LocalUser,
@@ -121,11 +136,17 @@ Envie esse arquivo ao suporte, ou instale este computador como Terminal e aponte
     ${Else}
       DetailPrint "Instalação de terminal — o servidor será localizado na rede ao abrir o sistema."
     ${EndIf}
+    estrudenaBancoPronto:
   !macroend
 
 !else
 
+  !include "preservar-postgres.nsh"
+
   !macro customUnInstall
+    ${If} ${isUpdated}
+      Goto estrudenaSemBanco
+    ${EndIf}
     ; Só mexe no banco se este PC for o servidor.
     IfFileExists "C:\ProgramData\Estrudena\pgdata\PG_VERSION" 0 estrudenaSemBanco
 

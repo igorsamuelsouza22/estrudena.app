@@ -1,4 +1,5 @@
 import { pode as verificarPermissao, PERMISSAO_TELA, type Permissao } from './permissoes'
+import { usePendenciaAtualizacao } from './atualizacao'
 import {
   createContext, useCallback, useContext, useEffect, useMemo, useRef, useState,
   type ReactNode
@@ -91,6 +92,7 @@ export function Provider(p: {
   const [flash, setFlash] = useState('')
   const [registroId, setRegistroId] = useState('')
   const [gravando, setGravando] = useState(false)
+  usePendenciaAtualizacao('',false,gravando)
   const trava = useRef(false)
   const chave = `estrudena:orcamentos:${p.user.id}`
   const [rascunhos, setRascunhos] = useState<Orcamento[]>(() => lerLocal(chave, []))

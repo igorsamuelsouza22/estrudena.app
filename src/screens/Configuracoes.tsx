@@ -3,6 +3,7 @@ import { chamar, ponte } from '../api'
 import { fm, fn } from '../format'
 import { guardarLocal, lerLocal } from '../rascunhos'
 import { useApp } from '../store'
+import { usePendenciaAtualizacao } from '../atualizacao'
 import { useAcoes } from '../Shell'
 import { Modal } from '../ui'
 import { PublicarVersao } from './PublicarVersao'
@@ -55,6 +56,7 @@ export function Configuracoes(){
  const erros=errosConfig(cfg,draft.valores)
  const alterados=CAMPOS_CONFIG.filter(f=>draft.valores[f.id]!==valoresConfig(draft.base)[f.id])
  const pendente=alterados.length>0
+ usePendenciaAtualizacao('configurações com alterações não salvas',pendente,salvando||sistemaOcupado)
  const externo=!igual(db.config,draft.base)
  const atual=SECOES_CONFIG.find(s=>s.id===secao)!
  const lista=LISTAS.find(l=>l.id===listaId)!

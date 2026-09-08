@@ -1,4 +1,5 @@
 import { nomeProposta } from '../shared/types'
+import { usePendenciaAtualizacao } from '../atualizacao'
 import { capturarPrecos, ampliarReferencia } from '../historico'
 import { proxRev } from '../calc'
 import { ClienteRapido } from './ClienteRapido'
@@ -26,6 +27,7 @@ export function Orcamento() {
   const [etapa, setEtapa] = useState(leitura ? 3 : 1)
   const [picker, setPicker] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  usePendenciaAtualizacao('orçamento com alterações não salvas',!leitura&&app.rascunhos.some(r=>(r.id||r.rascunhoId)===(q.id||q.rascunhoId)),salvando)
   // Orçamento já gravado, aguardando a escolha dos documentos a emitir.
   const [gerado, setGerado] = useState<TipoOrcamento | null>(null)
 

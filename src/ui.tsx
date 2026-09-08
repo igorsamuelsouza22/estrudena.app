@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, Children, cloneElement, isValidElement, createContext, useContext, useId, useEffect, useRef, useState } from 'react'
 import { useApp } from './store'
+import { usePendenciaAtualizacao } from './atualizacao'
 
 export const muted = '#5f6368'
 export const muted45 = '#5f6368'
@@ -353,6 +354,7 @@ export function useFocoModal(onFechar: () => void) {
   return ref
 }
 export function Modal(p: { titulo: string; onFechar: () => void; children: ReactNode; largura?: number }) {
+  usePendenciaAtualizacao(`janela “${p.titulo}” aberta`,true)
   const ref = useFocoModal(p.onFechar)
   const id = useId()
   return <div className="modal-backdrop"><div ref={ref} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={id} className="modal-panel" style={{ maxWidth: p.largura ?? 720 }}>

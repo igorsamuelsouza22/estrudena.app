@@ -4,6 +4,7 @@ import { guardarLocal, lerLocal } from '../rascunhos'
 import { useState, useEffect } from 'react'
 import { chamar, ponte } from '../api'
 import { useApp } from '../store'
+import { usePendenciaAtualizacao } from '../atualizacao'
 import { Campo, Card, InputFicha, Tag } from '../ui'
 import { novoId } from './useCadastro'
 import type { Perfil, Usuario } from '../shared/types'
@@ -17,6 +18,7 @@ export function UsuariosTela() {
   const chave = `estrudena:usuario:${app.user.id}`
   const [form, setForm] = useState<(Usuario & { senha: string }) | null>(() => lerLocal(chave, null))
   const [busca, setBusca] = useState('')
+  usePendenciaAtualizacao('edição de usuário aberta',!!form)
   useEffect(() => { guardarLocal(chave, form ? { ...form, senha: '' } : null) }, [form, chave])
 
   const alternar = (u: Usuario) =>

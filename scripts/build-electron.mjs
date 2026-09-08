@@ -16,7 +16,7 @@ const common = {
   // A versão vai fixa no código: fora do pacote, app.getVersion() devolve a
   // versão do Electron, e a comparação de atualização sairia errada.
   define: { __VERSAO_APP__: JSON.stringify(pkg.version) },
-  external: ['electron', 'pg', 'pg-native', 'bcryptjs']
+  external: ['electron', 'pg', 'pg-native', 'bcryptjs', 'electron-updater']
 }
 
 await build({ ...common, entryPoints: ['electron/main.ts'], outfile: 'dist-electron/main.js' })
