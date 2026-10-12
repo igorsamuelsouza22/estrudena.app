@@ -336,7 +336,7 @@ export function Orcamento() {
         </div>
       </div>
       </fieldset>
-      <div className="budget-footer"><small role="status">{salvando?'Salvando no servidor…':leitura?'Revisão emitida · para alterar, use Mais ações → Criar revisão':q.id?'Rascunho · salvar alterações cria uma nova revisão':'Rascunho'}</small><div>{etapa>1&&<button className="btn btn-secondary" onClick={()=>setEtapa(x=>x-1)}>Voltar</button>}{etapa<3?<button className="btn btn-primary" onClick={()=>setEtapa(x=>x+1)}>Continuar →</button>:!leitura&&<button className="btn btn-primary" disabled={salvando} onClick={()=>void gerar()}>Gerar proposta</button>}</div></div>
+      <div className="budget-footer"><small role="status">{salvando?'Salvando no servidor…':leitura?'Revisão emitida · para alterar, use Mais ações → Criar revisão':'Rascunho'}</small><div>{etapa>1&&<button className="btn btn-secondary" onClick={()=>setEtapa(x=>x-1)}>Voltar</button>}{etapa<3?<button className="btn btn-primary" onClick={()=>setEtapa(x=>x+1)}>Continuar →</button>:!leitura&&<button className="btn btn-primary" disabled={salvando} onClick={()=>void gerar()}>Gerar proposta</button>}</div></div>
 
       {clienteRapido && <ClienteRapido onFechar={() => setClienteRapido(false)} onCriado={c => { setQ(x => ({ ...x, clienteId: c.id, cidade: c.cidade, contato: c.contato })); setClienteRapido(false) }} />}
       {comparar && <Modal titulo="Comparar com os preços atuais" onFechar={() => setComparar(false)}>

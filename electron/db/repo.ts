@@ -506,8 +506,12 @@ export async function salvarOrcamento(o: Orcamento, autor = 'Sistema'): Promise<
         if (!anterior || o.atualizadoEm !== anterior.atualizado_em.toISOString()) throw new Error('Esta proposta foi alterada em outra sessão. Seu rascunho foi mantido. Abra a versão atual antes de salvar.')
         const ultima = (await c.query("SELECT id FROM orcamentos WHERE numero=$1 ORDER BY regexp_replace(rev,'[^0-9]','','g')::integer DESC LIMIT 1", [original.numero])).rows[0]
         if (o.id && ultima?.id !== o.id) throw new Error('Já existe uma revisão mais recente. Seu rascunho foi mantido; abra a versão atual.')
-        if (!isDeepStrictEqual(conteudo(original), conteudo(o)) || o.origemId) o = { ...o, id: '' }
-        else if (o.status === original.status) { await c.query('COMMIT'); return original }
+        // O rascunho é regravado no próprio registro, mantendo a revisão. Revisão
+        // nova só nasce em "Criar revisão" (chega com origemId e sem id), depois de emitir.
+        if (o.id) {
+          if (o.status === original.status && isDeepStrictEqual(conteudo(original), conteudo(o))) { await c.query('COMMIT'); return original }
+          o = { ...o, rev: original.rev }
+        }
       }
       if (!o.id) {
         if (o.numero && o.numero !== '(automático)') {

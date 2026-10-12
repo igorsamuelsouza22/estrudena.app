@@ -23,10 +23,12 @@ async function main(){
   let o=await repo.salvarOrcamento({...base,id:'',numero:'(automático)',atualizadoEm:undefined,referenciaPrecos:undefined,status:'Rascunho',obra:'Teste de fluxo',itens:[{...base.itens[0],matId:produto.id,qtd:4,larg:1000,alt:2000}]},admin.nome)
   assert.equal(o.rev,'rev1');assert.equal(nomeProposta(o),o.numero+'.rev1')
   const primeira=o
-  o=await repo.salvarOrcamento({...o,obra:'Teste de fluxo editado'},admin.nome);assert.equal(o.rev,'rev2');assert.notEqual(o.id,primeira.id)
-  assert.equal((await repo.salvarOrcamento(o)).rev,'rev2')
-  await assert.rejects(repo.salvarOrcamento({...primeira,obra:'Sessão antiga'}),/outra sessão|mais recente/)
-  o=await repo.salvarOrcamento({...o,status:'Proposta'});assert.equal(o.rev,'rev2');assert.ok(o.validadeAte)
+  // Rascunho é regravado na mesma revisão; a emissão também não cria outra.
+  o=await repo.salvarOrcamento({...o,obra:'Teste de fluxo editado'},admin.nome);assert.equal(o.rev,'rev1');assert.equal(o.id,primeira.id)
+  assert.equal((await repo.salvarOrcamento(o)).atualizadoEm,o.atualizadoEm)
+  await assert.rejects(repo.salvarOrcamento({...primeira,obra:'Sessão antiga'}),/outra sessão/)
+  o=await repo.salvarOrcamento({...o,status:'Proposta'});assert.equal(o.rev,'rev1');assert.equal(o.id,primeira.id);assert.ok(o.validadeAte)
+  assert.equal((await repo.carregarDB()).orcamentos.filter(x=>x.numero===o.numero).length,1)
   await assert.rejects(repo.salvarOrcamento({...o,status:'Aprovado'}),/ações do fluxo/)
   const cmd=async(c:ComandoNegocio,u=admin)=>executarNegocio(await repo.carregarDB(),c,u)
   await assert.rejects(cmd({acao:'aprovar',id:o.id,atualizadoEm:o.atualizadoEm},op),/comercial/)
@@ -42,9 +44,11 @@ async function main(){
   const atualizar=async()=>{db=await repo.carregarDB();p=db.pedidos!.find(x=>x.id===p.id)!}
   const pc=async(c:Omit<ComandoNegocio,'id'>)=>{await cmd({...c,id:p.id,versao:c.versao??p.versao});await atualizar()}
   const aprovado=db.orcamentos.find(x=>x.id===o.id)!
-  const rev3=await repo.salvarOrcamento({...aprovado,id:'',origemId:aprovado.id,status:'Rascunho',obra:'Aditivo não aceito'})
+  // Revisão nova só a partir de uma emitida; as gravações seguintes ficam nela.
+  let rev2=await repo.salvarOrcamento({...aprovado,id:'',origemId:aprovado.id,status:'Rascunho',obra:'Aditivo não aceito'})
+  rev2=await repo.salvarOrcamento({...rev2,obra:'Aditivo ainda não aceito'})
   await atualizar();assert.equal(p.orcamentoId,aprovado.id);assert.equal(p.proposta.obra,'Teste de fluxo editado')
-  assert.equal(rev3.rev,'rev3');assert.equal(p.total,new Motor(db).calc(aprovado).total)
+  assert.equal(rev2.rev,'rev2');assert.equal(db.orcamentos.filter(x=>x.numero===o.numero).length,2);assert.equal(p.total,new Motor(db).calc(aprovado).total)
   await assert.rejects(pc({acao:'liberar',data:'2026-12-01'}),/medidas/)
   await pc({acao:'liberar',data:'2026-12-01',medidasConferidas:true,requisitosConferidos:true})
   await assert.rejects(pc({acao:'planejar',data:'2026-12-02',versao:1}),/outra sessão/)
@@ -77,7 +81,7 @@ async function main(){
   await pc({acao:'instalacao',instalacao:'Concluída',data:'2026-12-04',responsavel:'Instaladores',motivo:'Aceite do cliente'})
   assert.equal(p.status,'Concluído');assert.equal(p.etapa,'Concluída')
   await assert.rejects(pc({acao:'cancelar',motivo:'Teste'}),/encerrado/)
-  const dto=dadosPorPerfil(db,op);assert.equal(dto.pedidos!.find(x=>x.id===p.id)!.total,0);assert.equal(dto.pedidos!.find(x=>x.id===p.id)!.proposta.markup,0);assert.equal(dto.orcamentos.some(x=>x.id===rev3.id),false)
+  const dto=dadosPorPerfil(db,op);assert.equal(dto.pedidos!.find(x=>x.id===p.id)!.total,0);assert.equal(dto.pedidos!.find(x=>x.id===p.id)!.proposta.markup,0);assert.equal(dto.orcamentos.some(x=>x.id===rev2.id),false)
   assert.ok(db.eventos!.filter(x=>x.numero===p.numero).length>=13)
   // Aditivo antes de entrega: aceite administrativo, reinício operacional e conferência antiga preservada.
   let a=await repo.salvarOrcamento({...primeira,id:'',numero:'(automático)',atualizadoEm:undefined,status:'Proposta'})
@@ -105,7 +109,7 @@ async function main(){
   const migrado=(await repo.carregarDB()).pedidos!.find(x=>x.id===pad.id)!
   assert.deepEqual([migrado.etapa,migrado.instalacao,migrado.entregas[0].status,migrado.versao],['Em fabricação','Programada','Programada',cancelado.versao+1])
   assert.equal((await controle.query(`SELECT status FROM "${schema}".orcamentos WHERE id=$1`,[a.id])).rows[0].status,'Enviada')
-  console.log('OK: rev1/rev2, histórico, no-op, concorrência, emissão/envio, aprovação idempotente e permissões.')
+  console.log('OK: rascunho na mesma revisão, rev2 só após emitir, histórico, no-op, concorrência, emissão/envio, aprovação idempotente e permissões.')
   console.log('OK: pedido congelado, aditivo, liberação, separação validada, fabricação e qualidade.')
   console.log('OK: entregas parciais, saldo, comprovante, instalação, encerramento, cancelamento e auditoria.')
   console.log('OK: v8 — separação avança, fabricação conferida, entrega direta, instalação simplificada, conclusão automática, expiração calculada e migração.')

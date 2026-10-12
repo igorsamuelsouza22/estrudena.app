@@ -136,7 +136,7 @@ Validação dos fluxos de interface: execute `npm run build` e `npm run teste:ux
 
 ## Ciclo comercial e produção (schema v6)
 
-O fluxo de proposta, aceite, pedido, ordem de produção, entregas parciais e instalação está descrito em [docs/fluxo-de-negocio-proposto.md](docs/fluxo-de-negocio-proposto.md). Cada edição salva cria `numero.revN`, preservando o histórico. Aprovações são transacionais e idempotentes. Pedidos antigos importados pedem conferência do aceite e da instalação pelo administrador.
+O fluxo de proposta, aceite, pedido, ordem de produção, entregas parciais e instalação está descrito em [docs/fluxo-de-negocio-proposto.md](docs/fluxo-de-negocio-proposto.md). A primeira gravação cria `numero.rev1` e o rascunho é regravado nessa mesma revisão até ser emitido. Uma revisão nova (`numero.revN`) só nasce em **Criar revisão**, a partir de uma proposta emitida, e a anterior fica no histórico. Aprovações são transacionais e idempotentes. Pedidos antigos importados pedem conferência do aceite e da instalação pelo administrador.
 
 `npm run teste:negocio` valida as regras no servidor em um schema temporário. `npm run teste:ux` também percorre aprovação, liberação, fabricação, qualidade, entrega e conclusão pelas telas.
 
