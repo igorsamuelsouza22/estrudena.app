@@ -72,9 +72,8 @@ npm run dist         # gera o instalador em release/
 Testes (exigem um PostgreSQL respondendo em `127.0.0.1:5432`):
 
 ```bash
-npm run teste              # migração, seed, login, cálculo, gravação
+npm run teste              # migração, seed, login, cálculo, revisões e separação (schema temporário)
 npm run teste:telas        # navega as telas do perfil e confere menu e console
-npm run teste:fluxo        # orçamento → proposta → PDFs → lista
 npm run teste:pdf          # gera os PDFs e analisa fundo, imagens e paginação
 npm run teste:atualizacao  # publica uma versão e verifica o aviso e o download
 npm run teste:fechar       # confere que a atualização baixada instala ao fechar

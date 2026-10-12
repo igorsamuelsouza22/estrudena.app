@@ -2,11 +2,21 @@
  * Exercita a camada de dados contra um PostgreSQL real: migração, seed,
  * autenticação, gravação de orçamento, separação e o motor de cálculo.
  * Rodado por `node scripts/teste-banco.mjs` (que empacota este arquivo).
+ *
+ * Roda num schema temporário, removido no fim: revisões gravadas não podem
+ * ser excluídas, então o teste não pode escrever na base de trabalho.
  */
+import { randomBytes } from 'node:crypto'
+import { Client } from 'pg'
+import { DB_NAME, DB_PASSWORD, DB_PORT, DB_USER } from '../electron/db/credentials'
 import { conectar, encerrar } from '../electron/db/pool'
 import * as repo from '../electron/db/repo'
+import { executarNegocio } from '../electron/db/negocio'
 import { Motor } from '../src/calc'
-import type { Orcamento } from '../src/shared/types'
+import type { ComandoNegocio, Orcamento, Usuario } from '../src/shared/types'
+
+const schema = 'estrudena_teste_banco_' + randomBytes(8).toString('hex')
+const controle = new Client({ host: '127.0.0.1', port: DB_PORT, database: DB_NAME, user: DB_USER, password: DB_PASSWORD })
 
 let falhas = 0
 let testes = 0
@@ -26,10 +36,30 @@ function perto(a: number, b: number, tol = 0.01): boolean {
 }
 
 async function main(): Promise<void> {
+  await controle.connect()
+  await controle.query(`CREATE SCHEMA "${schema}"`)
+  // O pool lê PGOPTIONS: todas as conexões do app passam a usar o schema temporário.
+  process.env.PGOPTIONS = `-c search_path=${schema}`
+  try {
+    await verificar()
+  } finally {
+    await encerrar()
+    await controle.query(`DROP SCHEMA "${schema}" CASCADE`)
+    await controle.end()
+  }
+
+  console.log(`\n${testes - falhas}/${testes} verificações passaram`)
+  if (falhas) {
+    console.log(`${falhas} FALHA(S)`)
+    process.exitCode = 1
+  }
+}
+
+async function verificar(): Promise<void> {
   console.log('\n— conexão e migração —')
   const st = await conectar('127.0.0.1')
   ok(st.status === 'conectado', `conectou em ${st.host}:${st.porta}`, st.mensagem)
-  if (st.status !== 'conectado') { process.exit(1) }
+  if (st.status !== 'conectado') throw new Error(st.mensagem)
 
   let db = await repo.carregarDB()
   ok(db.materiais.length === 19, `19 itens de catálogo carregados`, db.materiais.length)
@@ -66,8 +96,6 @@ async function main(): Promise<void> {
   console.log('\n— dados de exemplo —')
   await repo.restaurarExemplo()
   db = await repo.carregarDB()
-  // Conferência por presença, não por contagem total: a base pode já ter
-  // propostas reais, e o teste não deve depender de encontrá-la vazia.
   const numerosExemplo = ['8026-01-26', '8031-02-26', '8034-03-26', '8029-02-26', '8018-11-25']
   const faltando = numerosExemplo.filter(n => !db.orcamentos.some(o => o.numero === n))
   ok(db.clientes.some(c => c.nome === 'PORTO BAY CONSTRUTORA'), 'clientes de exemplo carregados')
@@ -106,35 +134,62 @@ async function main(): Promise<void> {
 
   console.log('\n— gravação de orçamento —')
   const novo: Orcamento = {
-    ...portobay!, id: '', numero: '', rev: 'Rev. 00', status: 'Rascunho',
-    obra: 'OBRA DE TESTE AUTOMATIZADO', itens: portobay!.itens.slice(0, 3)
+    ...portobay!, id: '', numero: '', atualizadoEm: undefined, referenciaPrecos: undefined,
+    status: 'Rascunho', obra: 'OBRA DE TESTE AUTOMATIZADO', itens: portobay!.itens.slice(0, 3)
   }
   const gravado = await repo.salvarOrcamento(novo)
   ok(!!gravado.id, 'id gerado na criação', gravado.id)
   ok(/^80\d{2}-\d{2}-\d{2}$/.test(gravado.numero), 'número no formato 80NN-MM-AA', gravado.numero)
+  ok(gravado.rev === 'rev1', 'primeira gravação é a rev1', gravado.rev)
 
-  const revisao = await repo.salvarOrcamento({ ...gravado, id: '', rev: 'Rev. 01' })
+  let semOrigem = ''
+  try {
+    await repo.salvarOrcamento({ ...gravado, id: '' })
+  } catch (e) {
+    semOrigem = (e as Error).message
+  }
+  ok(/revisão de origem/.test(semOrigem), 'número existente sem revisão de origem é recusado', semOrigem)
+
+  // Revisão nova: sem id, apontando a revisão de origem (numero.revN).
+  const revisao = await repo.salvarOrcamento({ ...gravado, id: '', origemId: gravado.id })
   ok(revisao.numero === gravado.numero, 'revisão preserva o número do pedido', {
     original: gravado.numero, revisao: revisao.numero
   })
   ok(revisao.id !== gravado.id, 'revisão é um registro novo')
+  ok(revisao.rev === 'rev2', 'revisão recebe a rev2', revisao.rev)
 
   db = await repo.carregarDB()
-  const relido = db.orcamentos.find(o => o.id === gravado.id)!
+  const relido = db.orcamentos.find(o => o.id === revisao.id)!
   ok(relido.itens.length === 3, 'itens gravados e relidos na ordem', relido.itens.length)
   ok(relido.itens[0].matId === novo.itens[0].matId, 'primeiro item preservado')
   ok(relido.obra === 'OBRA DE TESTE AUTOMATIZADO', 'campos de texto preservados')
+  const anterior = db.orcamentos.find(o => o.id === gravado.id)
+  ok(anterior?.status === 'Substituída', 'rev1 fica como Substituída', anterior?.status)
 
   console.log('\n— separação —')
-  await repo.salvarSeparacao(gravado.id, {
+  // A separação exige um pedido liberado: emite a rev2, registra o aceite e libera.
+  const emitida = await repo.salvarOrcamento({ ...revisao, status: 'Proposta' })
+  ok(emitida.id === revisao.id && emitida.rev === 'rev2', 'emitir um rascunho não cria revisão', emitida.rev)
+  const comando = async (c: ComandoNegocio) => executarNegocio(await repo.carregarDB(), c, wilson as Usuario)
+  await comando({ acao: 'aprovar', id: emitida.id, atualizadoEm: emitida.atualizadoEm, responsavel: 'Cliente de teste', evidencia: 'Aceite de teste' })
+  let pedido = (await repo.carregarDB()).pedidos?.find(p => p.numero === emitida.numero)
+  ok(pedido?.orcamentoId === emitida.id, 'aceite gera o pedido de venda da rev2', pedido?.orcamentoId)
+  // Os produtos do exemplo não têm composição: entram como comprados prontos.
+  await comando({
+    acao: 'liberar', id: pedido!.id, versao: pedido!.versao, data: '2026-12-01',
+    medidasConferidas: true, requisitosConferidos: true, compradosProntos: [0, 1, 2]
+  })
+  await repo.salvarSeparacao(emitida.id, {
     status: 'Em separação', conf: { '0': 4, '1': 5 },
     responsavel: 'Conferente Teste', obs: 'teste', iniciado: '28/07/2026', concluido: ''
   })
   db = await repo.carregarDB()
-  const sep = db.separacoes[gravado.id]
+  const sep = db.separacoes[emitida.id]
   ok(sep?.status === 'Em separação', 'status da separação gravado', sep?.status)
   ok(sep?.conf['0'] === 4 && sep?.conf['1'] === 5, 'conferência por item gravada', sep?.conf)
   ok(sep?.responsavel === 'Conferente Teste', 'responsável gravado')
+  pedido = db.pedidos?.find(p => p.id === pedido!.id)
+  ok(pedido?.etapa === 'Em separação', 'pedido acompanha a separação', pedido?.etapa)
 
   console.log('\n— listas gerenciáveis —')
   await repo.adicionarLista('series', 'SERIE DE TESTE')
@@ -145,11 +200,15 @@ async function main(): Promise<void> {
   ok(!db.series.includes('SERIE DE TESTE'), 'valor removido da lista')
 
   console.log('\n— exclusão e vínculos —')
-  await repo.excluir('orcamentos', revisao.id)
-  await repo.excluir('orcamentos', gravado.id)
+  let historico = ''
+  try {
+    await repo.excluir('orcamentos', gravado.id)
+  } catch (e) {
+    historico = (e as Error).message
+  }
+  ok(/histórico/.test(historico), 'revisão gravada não pode ser excluída', historico)
   db = await repo.carregarDB()
-  ok(!db.orcamentos.some(o => o.id === gravado.id), 'orçamento excluído')
-  ok(!db.separacoes[gravado.id], 'separação some junto com o orçamento (cascade)')
+  ok(db.orcamentos.some(o => o.id === gravado.id), 'revisão continua na base')
 
   let bloqueou = false
   try {
@@ -164,17 +223,9 @@ async function main(): Promise<void> {
   await conectar('127.0.0.1')
   const depois = (await repo.carregarDB()).materiais.length
   ok(antes === depois, 'reconectar não duplica o catálogo', { antes, depois })
-
-  await encerrar()
-
-  console.log(`\n${testes - falhas}/${testes} verificações passaram`)
-  if (falhas) {
-    console.log(`${falhas} FALHA(S)`)
-    process.exit(1)
-  }
 }
 
 main().catch(e => {
   console.error('\nerro no teste:', e)
-  process.exit(1)
+  process.exitCode = 1
 })

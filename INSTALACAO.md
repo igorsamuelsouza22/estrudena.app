@@ -320,9 +320,8 @@ Testes contra um banco real (é preciso ter um PostgreSQL respondendo em
 `127.0.0.1:5432` com a role e o banco `estrudena`):
 
 ```bash
-npm run teste                 # 50 verificações: migração, seed, login, cálculo, gravação
-npm run teste:telas           # navega as telas do perfil e confere menu, título e console
-npm run teste:fluxo           # orçamento → Gerar Proposta → modal → PDFs → Propostas
+npm run teste                 # 57 verificações em schema temporário: migração, seed, login, cálculo, revisões, separação
+npm run teste:telas           # navega as telas do perfil e confere menu, trilha e console (só leitura)
 npm run teste:pdf             # gera os dois PDFs e analisa fundo, imagens e paginação
 npm run teste:atualizacao     # publica uma versão, o terminal avisa e baixa de volta
 npm run capturas              # fotografa cada tela do sistema

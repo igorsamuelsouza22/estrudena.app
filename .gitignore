@@ -13,7 +13,6 @@ capturas/
 *.log
 
 pdfs/
-pdfs-fluxo/
 /documentos/
 
 # Backups locais do banco (dados dos clientes).

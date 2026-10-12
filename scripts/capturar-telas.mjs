@@ -58,21 +58,34 @@ async function foto(win, nome) {
   console.log('capturado ' + nome)
 }
 
-async function clicarTexto(win, texto) {
+// Clica no primeiro elemento do seletor cujo rótulo é exatamente o texto.
+// No menu lateral, o rótulo é o primeiro <span> (sem o ícone e a seta dos grupos);
+// nos cartões de Cadastros de apoio, é o <strong>.
+async function clicar(win, seletor, texto) {
   return win.webContents.executeJavaScript(\`(() => {
-    const alvo = [...document.querySelectorAll('button, a, .navbtn, .seg-opt, .linha')]
-      .find(e => e.textContent.trim().startsWith(\${JSON.stringify(texto)}))
+    const alvo = [...document.querySelectorAll(\${JSON.stringify(seletor)})]
+      .find(e => (e.querySelector('strong') || e.querySelector('span') || e).textContent.trim() === \${JSON.stringify(texto)})
     if (!alvo) return 'não achei: ' + \${JSON.stringify(texto)}
     alvo.click()
     return 'ok'
   })()\`)
 }
+const MENU = 'nav[aria-label="Áreas do sistema"] button.navbtn'
+const clicarMenu = (win, rotulo) => clicar(win, MENU, rotulo)
+const clicarBotao = (win, texto) => win.webContents.executeJavaScript(\`(() => {
+  const alvo = [...document.querySelectorAll('button')].find(b => b.textContent.trim() === \${JSON.stringify(texto)})
+  if (!alvo) return 'não achei: ' + \${JSON.stringify(texto)}
+  alvo.click()
+  return 'ok'
+})()\`)
 
 app.whenReady().then(async () => {
   await espera(1500)
   const win = BrowserWindow.getAllWindows()[0]
   if (!win) { console.error('nenhuma janela'); app.exit(1); return }
 
+  // O app abre maximizado, e uma janela maximizada ignora setSize.
+  win.unmaximize()
   win.setSize(1440, 900)
   win.webContents.on('console-message', (_e, nivel, msg) => {
     if (nivel >= 2) console.log('CONSOLE[' + nivel + '] ' + msg)
@@ -91,40 +104,55 @@ app.whenReady().then(async () => {
   await win.webContents.executeJavaScript(DIGITAR + "('input[autocomplete=username]', " + JSON.stringify(USUARIO) + ")")
   await win.webContents.executeJavaScript(DIGITAR + "('input[autocomplete=current-password]', " + JSON.stringify(SENHA) + ")")
   await espera(200)
-  console.log(await clicarTexto(win, 'Entrar'))
+  console.log(await clicarBotao(win, 'Entrar'))
   await espera(2500)
+  if (!await win.webContents.executeJavaScript(\`document.querySelectorAll(\${JSON.stringify(MENU)}).length\`)) {
+    console.error('menu lateral não apareceu — o login falhou?')
+    app.exit(1)
+    return
+  }
 
+  // Itens do menu lateral; os cadastros de apoio são cartões dentro da tela deles.
   const telas = [
-    ['02-visao-geral', 'Visão geral'],
-    ['03-orcamento', 'Orçamento'],
-    ['04-proposta', 'Proposta / PDF'],
-    ['05-propostas', 'Propostas'],
-    ['06-separacao', 'Separação'],
-    ['07-produtos', 'Produtos'],
-    ['07b-materias-primas', 'Matérias-primas'],
-    ['08-cores', 'Cores e pintura'],
-    ['09-acessorios', 'Acessórios'],
-    ['10-kits-ferragem', 'Kits de ferragem'],
-    ['11-kits-venda', 'Kits de venda'],
-    ['12-instaladores', 'Instaladores'],
-    ['13-clientes', 'Clientes'],
-    ['14-relatorios', 'Relatórios'],
-    ['15-usuarios', 'Usuários'],
-    ['16-configuracoes', 'Configurações']
+    ['02-inicio', 'Início'],
+    ['03-orcamentos', 'Orçamentos'],
+    ['04-pedidos-de-venda', 'Pedidos de venda'],
+    ['05-produtos', 'Produtos'],
+    ['06-materias-primas', 'Matérias-primas'],
+    ['07-cadastros-de-apoio', 'Cadastros de apoio'],
+    ['08-ferragens-e-acessorios', 'Cadastros de apoio', 'Ferragens e acessórios'],
+    ['09-kits-de-ferragem', 'Cadastros de apoio', 'Kits de ferragem'],
+    ['10-kits-de-venda', 'Cadastros de apoio', 'Kits de venda'],
+    ['11-cores-e-acabamentos', 'Cadastros de apoio', 'Cores e acabamentos'],
+    ['12-equipes-de-instalacao', 'Cadastros de apoio', 'Equipes de instalação'],
+    ['13-producao', 'Produção'],
+    ['14-clientes', 'Clientes'],
+    ['15-resultados', 'Resultados'],
+    ['16-configuracoes', 'Configurações'],
+    ['17-pessoas-e-acessos', 'Pessoas e acessos']
   ]
 
-  for (const [arquivo, rotulo] of telas) {
-    const r = await clicarTexto(win, rotulo)
-    if (r !== 'ok') { console.log('pulando ' + rotulo + ': ' + r); continue }
+  for (const [arquivo, rotulo, cartao] of telas) {
+    let r = await clicarMenu(win, rotulo)
+    if (r === 'ok' && cartao) {
+      await espera(500)
+      r = await clicar(win, '.settings-link', cartao)
+    }
+    if (r !== 'ok') { console.log('pulando ' + (cartao || rotulo) + ': ' + r); continue }
     await espera(900)
     await foto(win, arquivo)
   }
 
-  // Modal de inserir item, sobre a tela de orçamento.
-  if (await clicarTexto(win, 'Orçamento') === 'ok') {
+  // Novo orçamento (sem salvar) e o modal de inserir produto, na etapa de produtos.
+  await clicarMenu(win, 'Início')
+  await espera(600)
+  if (await clicarBotao(win, '+ Novo orçamento') === 'ok') {
     await espera(800)
-    if (await clicarTexto(win, '+ Inserir produto') === 'ok') {
-      await foto(win, '17-modal-inserir-item')
+    await clicarBotao(win, 'Continuar →')
+    await espera(600)
+    await foto(win, '18-novo-orcamento')
+    if (await clicarBotao(win, '+ Inserir produto') === 'ok') {
+      await foto(win, '19-modal-inserir-produto')
     }
   }
 
@@ -133,5 +161,8 @@ app.whenReady().then(async () => {
 })
 `, 'utf8')
 
-const proc = spawn(electron, [driver], { stdio: 'inherit' })
+const env = { ...process.env }
+delete env.ESTRUDENA_DEV_URL
+delete env.ELECTRON_RUN_AS_NODE
+const proc = spawn(electron, [driver], { stdio: 'inherit', env })
 proc.on('close', codigo => process.exit(codigo ?? 0))

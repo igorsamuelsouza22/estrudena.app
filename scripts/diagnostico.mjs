@@ -1,6 +1,6 @@
 /**
- * Navega por todas as telas do perfil e confere título, item de menu ativo,
- * corpo renderizado e erros de console.
+ * Navega por todas as telas do perfil e confere item de menu ativo, trilha,
+ * corpo renderizado e erros de console. Só lê: não grava nada no banco.
  *
  *   node scripts/diagnostico.mjs [usuario] [senha]
  */
@@ -53,59 +53,98 @@ app.whenReady().then(async () => {
     "[...document.querySelectorAll('button')].find(b => b.textContent.trim() === 'Entrar').click()")
   await espera(2500)
 
-  const rotulos = ['Visão geral','Orçamento','Propostas','Clientes','Separação',
-    'Produtos','Matérias-primas','Cores e pintura','Acessórios','Kits de ferragem','Kits de venda',
-    'Instaladores','Relatórios','Usuários','Configurações']
+  // Itens do menu lateral. Catálogo e Gestão são grupos que já abrem expandidos.
+  const rotulos = ['Início', 'Orçamentos', 'Pedidos de venda',
+    'Produtos', 'Matérias-primas', 'Cadastros de apoio',
+    'Produção', 'Clientes',
+    'Resultados', 'Configurações', 'Pessoas e acessos']
+
+  // Rótulo de um botão do menu, sem o ícone nem a seta dos grupos.
+  const ROTULO = "b => (b.querySelector('span') || b).textContent.trim()"
+  const MENU = "document.querySelectorAll('nav[aria-label=\\"Áreas do sistema\\"] button.navbtn')"
 
   let erros = 0
-  for (const rotulo of rotulos) {
-    const r = await win.webContents.executeJavaScript(\`(() => {
-      const btn = [...document.querySelectorAll('aside button.navbtn')]
-        .find(b => b.textContent.trim().startsWith(\${JSON.stringify(rotulo)}))
-      if (!btn) return { erro: 'menu ausente' }
-      btn.click()
-      return { clicado: true }
-    })()\`)
-    // Menu ausente é esperado nos perfis restritos — só registra.
-    if (r.erro) { console.log(rotulo.padEnd(20) + ' — fora do perfil'); continue }
+  if (!await win.webContents.executeJavaScript(MENU + '.length')) {
+    console.log('menu lateral não apareceu — o login falhou?')
+    app.exit(1)
+    return
+  }
+
+  // Um item novo ou renomeado no menu tem que entrar na lista acima.
+  const extras = await win.webContents.executeJavaScript(\`[...\${MENU}]
+    .filter(b => !b.hasAttribute('aria-expanded')).map(\${ROTULO})
+    .filter(r => !\${JSON.stringify(rotulos)}.includes(r))\`)
+  for (const r of extras) { erros++; console.log(r.padEnd(24) + ' <<< item de menu fora da lista do diagnóstico') }
+
+  const conferir = async rotulo => {
     await espera(700)
     const estado = await win.webContents.executeJavaScript(\`(() => {
-      const h = document.querySelector('header')
-      const ativo = document.querySelector('aside button.navbtn.on')
+      const trilha = document.querySelector('header .breadcrumb')
+      const ativo = document.querySelector('nav[aria-label="Áreas do sistema"] button[aria-current=page]')
       const corpo = document.querySelector('.appscroll')
       return {
         // Sem regex: este trecho passa por dois níveis de template literal e
         // qualquer barra invertida chegaria mutilada no renderer.
-        titulo: h ? h.innerText.split(String.fromCharCode(10)).join(' / ').trim().slice(0, 44) : '(sem header)',
-        ativo: ativo ? ativo.textContent.trim() : '(nenhum)',
+        titulo: trilha ? trilha.innerText.split(String.fromCharCode(10)).join(' ').trim().slice(0, 44) : '(sem trilha)',
+        ativo: ativo ? (\${ROTULO})(ativo) : '(nenhum)',
         vazio: !corpo || corpo.innerText.trim().length < 20
       }
     })()\`)
-    const bate = estado.ativo.startsWith(rotulo)
+    const bate = estado.ativo === rotulo
     if (!bate || estado.vazio) erros++
-    console.log(
-      rotulo.padEnd(20) + ' menu=' + estado.ativo.padEnd(20) +
-      ' header=' + estado.titulo.padEnd(34) +
-      (estado.vazio ? ' CORPO VAZIO' : '') + (bate ? '' : ' <<< DIVERGE'))
+    return estado.ativo.padEnd(24) + ' trilha=' + estado.titulo.padEnd(40) +
+      (estado.vazio ? ' CORPO VAZIO' : '') + (bate ? '' : ' <<< DIVERGE')
+  }
+
+  const clicarMenu = rotulo => win.webContents.executeJavaScript(\`(() => {
+    const btn = [...\${MENU}].find(b => (\${ROTULO})(b) === \${JSON.stringify(rotulo)})
+    if (!btn) return false
+    btn.click()
+    return true
+  })()\`)
+
+  for (const rotulo of rotulos) {
+    // Menu ausente é esperado nos perfis restritos — só registra.
+    if (!await clicarMenu(rotulo)) { console.log(rotulo.padEnd(24) + ' — fora do perfil'); continue }
+    console.log(rotulo.padEnd(24) + ' menu=' + await conferir(rotulo))
+
+    // Os cadastros de apoio ficam em cartões dentro da tela, não no menu.
+    if (rotulo !== 'Cadastros de apoio') continue
+    const cartoes = await win.webContents.executeJavaScript(
+      "[...document.querySelectorAll('.settings-link strong')].map(s => s.textContent.trim())")
+    for (const cartao of cartoes) {
+      await win.webContents.executeJavaScript(\`[...document.querySelectorAll('.settings-link')]
+        .find(b => b.querySelector('strong').textContent.trim() === \${JSON.stringify(cartao)}).click()\`)
+      console.log(('  ' + cartao).padEnd(24) + ' menu=' + await conferir(rotulo))
+      await win.webContents.executeJavaScript(
+        "[...document.querySelectorAll('button.back-button')].find(b => b.textContent.includes('Cadastros de apoio')).click()")
+      await espera(400)
+    }
   }
 
   console.log('')
-  console.log('modal inserir item:')
+  console.log('modal inserir produto:')
+  // Novo orçamento sem salvar: o rascunho fica só na pasta de dados temporária.
+  await clicarMenu('Início')
+  await espera(600)
   const temOrcamento = await win.webContents.executeJavaScript(\`(() => {
-    const b = [...document.querySelectorAll('aside button.navbtn')]
-      .find(x => x.textContent.trim().startsWith('Orçamento'))
+    const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '+ Novo orçamento')
     if (!b) return false
     b.click()
     return true
   })()\`)
   if (!temOrcamento) {
-    console.log('  Orçamento fora do perfil — modal não se aplica')
+    console.log('  Orçamentos fora do perfil — modal não se aplica')
     console.log('')
     console.log(erros ? erros + ' PROBLEMA(S)' : 'todas as telas do perfil OK')
     app.exit(erros ? 1 : 0)
     return
   }
   await espera(800)
+  // O orçamento abre na etapa do cliente; os produtos ficam na etapa seguinte.
+  await win.webContents.executeJavaScript(
+    "[...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Continuar →')?.click()")
+  await espera(600)
   const modal = await win.webContents.executeJavaScript(\`(() => {
     const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === '+ Inserir produto')
     if (!b) return 'botão ausente'
@@ -113,7 +152,7 @@ app.whenReady().then(async () => {
     return 'clicado'
   })()\`)
   await espera(800)
-  const abriu = await win.webContents.executeJavaScript("!!document.querySelector('.dialog-backdrop')")
+  const abriu = await win.webContents.executeJavaScript("!!document.querySelector('[role=dialog][aria-label=\\"Inserir produto\\"]')")
   console.log('  ' + modal + ' → dialog presente: ' + abriu)
   if (!abriu) erros++
 
@@ -123,4 +162,7 @@ app.whenReady().then(async () => {
 })
 `, 'utf8')
 
-spawn(electron, [driver], { stdio: 'inherit' }).on('close', c => process.exit(c ?? 0))
+const env = { ...process.env }
+delete env.ESTRUDENA_DEV_URL
+delete env.ELECTRON_RUN_AS_NODE
+spawn(electron, [driver], { stdio: 'inherit', env }).on('close', c => process.exit(c ?? 0))
