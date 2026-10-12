@@ -19,6 +19,14 @@ export function capturarPrecos(db: DB, produtos?: Iterable<string>) {
   return structuredClone({ config: db.config, materiais, cores: db.cores.filter(c => materiais.some(m => m.corId === c.id)),
     acessorios: db.acessorios.filter(a => acesIds.has(a.id)), kits, capturadoEm: new Date().toISOString() })
 }
+/**
+ * Proposta emitida cuja validade passou aparece como "Expirada" sem que alguém
+ * precise encerrá-la. Mesma comparação de datas do servidor ao aprovar.
+ */
+export function situacaoVigente<T extends string>(status: T, validadeAte?: string | null): T | 'Expirada' {
+  return ['Proposta', 'Enviada'].includes(status) && !!validadeAte && validadeAte < new Date().toISOString().slice(0, 10) ? 'Expirada' : status
+}
+
 export function catalogoDoPedido(db: DB, q: Orcamento): DB {
   return q.referenciaPrecos ? { ...db, ...q.referenciaPrecos } : db
 }

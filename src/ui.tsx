@@ -33,11 +33,41 @@ export function Tag(p: { children: ReactNode; tipo?: 'accent' | 'accent-2' | 'ne
   return <span data-status={typeof p.children === 'string' ? p.children : undefined} className={'tag tag-' + (p.tipo ?? 'neutral')}>{p.children}</span>
 }
 
-export function tagDeStatus(s: string): 'accent' | 'accent-2' | 'neutral' | 'outline' {
-  if (s === 'Aprovado') return 'accent'
-  if (s === 'Proposta') return 'accent-2'
-  if (s === 'Em análise') return 'outline'
-  return 'neutral'
+/** Nome exibido para a situação gravada: "Proposta" é a revisão emitida; entrega e instalação são agendadas. */
+const ROTULO_STATUS: Record<string, string> = { Proposta: 'Emitida', Programada: 'Agendada', 'A programar': 'A agendar' }
+export const rotuloStatus = (s: string) => ROTULO_STATUS[s] ?? s
+
+/** Selo de situação: a cor segue o valor gravado, o texto segue o rótulo. */
+export function StatusTag(p: { status: string }) {
+  return <span data-status={p.status} className="tag tag-neutral">{rotuloStatus(p.status)}</span>
+}
+
+export interface ItemMenu { rotulo: string; onClick: () => void }
+
+/** Ações secundárias recolhidas num menu, para deixar um botão principal por vez. */
+export function MaisAcoes(p: { itens: (ItemMenu | false | null | undefined)[]; alinhar?: 'esquerda' | 'direita'; disabled?: boolean }) {
+  const [aberto, setAberto] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
+  const itens = p.itens.filter((x): x is ItemMenu => !!x)
+  useEffect(() => {
+    if (!aberto) return
+    ref.current?.querySelector<HTMLElement>('[role=menuitem]')?.focus()
+    const fora = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setAberto(false) }
+    const tecla = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); setAberto(false); ref.current?.querySelector<HTMLElement>('[aria-haspopup]')?.focus() }
+    }
+    document.addEventListener('mousedown', fora)
+    ref.current?.addEventListener('keydown', tecla)
+    const no = ref.current
+    return () => { document.removeEventListener('mousedown', fora); no?.removeEventListener('keydown', tecla) }
+  }, [aberto])
+  if (!itens.length) return null
+  return <div className="more-actions" ref={ref}>
+    <button className="btn btn-secondary" aria-haspopup="menu" aria-expanded={aberto} disabled={p.disabled} onClick={() => setAberto(v => !v)}>Mais ações<span aria-hidden="true"> ▾</span></button>
+    {aberto && <div role="menu" className={'more-actions-menu' + (p.alinhar === 'esquerda' ? ' left' : '')}>
+      {itens.map(i => <button key={i.rotulo} role="menuitem" className="btn btn-ghost" onClick={() => { setAberto(false); i.onClick() }}>{i.rotulo}</button>)}
+    </div>}
+  </div>
 }
 
 export function Seg<T extends string>(p: {

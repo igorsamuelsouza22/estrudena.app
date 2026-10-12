@@ -7,7 +7,7 @@ import { Barra, Card, KpiFaixa, muted50 } from '../ui'
 export function Relatorios() {
   const app = useApp()
   const { db, motor } = app
-  const { lista, filtros } = useFiltroPropostas([...db.orcamentos.filter(o=>!(db.pedidos||[]).some(p=>p.numero===o.numero)), ...(db.pedidos||[]).filter(p=>p.status!=='Cancelado').map(p=>p.proposta)])
+  const { lista, filtros } = useFiltroPropostas([...db.orcamentos.filter(o=>!(db.pedidos||[]).some(p=>p.numero===o.numero)), ...(db.pedidos||[]).filter(p=>p.status!=='Cancelado').map(p=>p.proposta)], { comSituacao: true })
 
   const d = useMemo(() => {
     const calcs = new Map(lista.map(o => [o.id, motor.calc(o)]))

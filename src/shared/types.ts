@@ -2,7 +2,7 @@ import type { PoliticaPermissoes } from '../permissoes'
 export type Perfil = 'Administrador' | 'Vendedor' | 'Produção'
 export type Unidade = 'KG' | 'M2' | 'UN' | 'ML'
 export type UnidadeAces = 'UN' | 'ML'
-export type StatusOrc = 'Rascunho' | 'Proposta' | 'Enviada' | 'Em análise' | 'Aprovado' | 'Perdido' | 'Expirada' | 'Substituída'
+export type StatusOrc = 'Rascunho' | 'Proposta' | 'Enviada' | 'Aprovado' | 'Perdido' | 'Expirada' | 'Substituída'
 export type StatusSep = 'Pendente' | 'Em separação' | 'Concluída'
 
 export interface Config {
@@ -185,9 +185,9 @@ export interface EstadoAtualizacao {
 }
 
 
-export type EtapaProducao = 'Aguardando liberação' | 'Materiais pendentes' | 'Em separação' | 'Em fabricação' | 'Em conferência' | 'Pronta para expedição' | 'Concluída'
+export type EtapaProducao = 'Aguardando liberação' | 'Materiais pendentes' | 'Em separação' | 'Em fabricação' | 'Pronta para expedição' | 'Concluída'
 export interface EntregaPedido {
-  id: string; status: 'Programada' | 'Em transporte' | 'Entregue' | 'Ocorrência'
+  id: string; status: 'Programada' | 'Entregue' | 'Ocorrência'
   data: string; responsavel: string; comprovante: string; quantidades: Record<string, number>
 }
 export interface PedidoVenda {
@@ -198,7 +198,7 @@ export interface PedidoVenda {
   proposta: Orcamento; cliente?: Cliente; total: number
   aprovadoEm: string; aprovadoPor: string; evidencia: string
   etapa: EtapaProducao; entregaPrevista: string; prioridade: 'Normal' | 'Alta' | 'Urgente'
-  instalacao: 'Não contratada' | 'A programar' | 'Programada' | 'Em execução' | 'Concluída' | 'Pendência'
+  instalacao: 'Não contratada' | 'A programar' | 'Programada' | 'Concluída'
   instalacaoData: string; instalacaoResponsavel: string
   compradosProntos: number[]; entregas: EntregaPedido[]
   revisoesAnteriores: { proposta: Orcamento; etapa: EtapaProducao; motivo: string; data: string }[]

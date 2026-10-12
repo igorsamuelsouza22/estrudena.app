@@ -4,7 +4,7 @@ import type { PoolClient } from 'pg'
 import bcrypt from 'bcryptjs'
 import { carregarPedidos, evento, validarEmissao } from './negocio'
 import { necessidadesProducao } from '../../src/producao'
-import { catalogoDoPedido } from '../../src/historico'
+import { catalogoDoPedido, situacaoVigente } from '../../src/historico'
 import { isDeepStrictEqual } from 'node:util'
 import { capturarPrecos, ampliarReferencia } from '../../src/historico'
 import { comCliente } from './pool'
@@ -165,7 +165,7 @@ export async function carregarDB(): Promise<DB> {
       orcamentos: orcQ.rows.map((r): Orcamento => ({
         emitidaEm: r.emitida_em, validadeAte: r.validade_ate, referenciaPrecos: r.referencia_precos ?? undefined, atualizadoEm: r.atualizado_em?.toISOString(),
         entregaPrevista: r.entrega_prevista, prioridade: r.prioridade,
-        id: r.id, numero: r.numero, rev: r.rev, status: r.status, data: r.data,
+        id: r.id, numero: r.numero, rev: r.rev, status: situacaoVigente(r.status, r.validade_ate), data: r.data,
         vendedor: r.vendedor, enviadaEm: r.enviada_em,
         clienteId: r.cliente_id ?? '', obra: r.obra, cidade: r.cidade, contato: r.contato,
         prazo: r.prazo, condPag: r.cond_pag, instaladorId: r.instalador_id ?? '',
@@ -621,9 +621,10 @@ export async function salvarSeparacao(orcId: string, s: Separacao, autor = 'Sist
       }
 
       await c.query('UPDATE separacoes SET versao=versao+1 WHERE orcamento_id=$1', [orcId])
-      p.etapa = 'Em separação'; p.status = 'Em execução'; p.versao++
+      // v8: concluir a separação já leva o pedido à fabricação (ou ao recebimento dos comprados prontos).
+      p.etapa = s.status === 'Concluída' ? 'Em fabricação' : 'Em separação'; p.status = 'Em execução'; p.versao++
       await c.query('UPDATE pedidos_venda SET dados=$2,versao=$3 WHERE id=$1', [p.id, JSON.stringify(p), p.versao])
-      await evento(c, p.numero, autor, 'Separação', `${s.status}. Conferente: ${s.responsavel}. ${s.obs}. Produtos: ${JSON.stringify(s.conf)}. Insumos: ${JSON.stringify(s.insumos || {})}`)
+      await evento(c, p.numero, autor, 'Separação', `${s.status}${s.status === 'Concluída' ? ' · pedido em fabricação' : ''}. Conferente: ${s.responsavel}. ${s.obs}. Produtos: ${JSON.stringify(s.conf)}. Insumos: ${JSON.stringify(s.insumos || {})}`)
       await c.query('COMMIT')
     } catch (e) { await c.query('ROLLBACK'); throw e }
   })

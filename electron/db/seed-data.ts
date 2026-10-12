@@ -205,7 +205,7 @@ export const ORCAMENTOS_EXEMPLO = [
     id: 'o2', numero: '8031-02-26', rev: 'Rev. 01', clienteId: 'c2',
     obra: 'EDIFÍCIO VISTA VERDE — TORRE B', cidade: 'AMERICANA — SP',
     contato: 'Eng. Paulo Ferraz', prazo: '30 DIAS APÓS APROVAÇÃO DO PROJETO',
-    data: '19/06/2026', vendedor: 'Ana', status: 'Em análise',
+    data: '19/06/2026', vendedor: 'Ana', status: 'Enviada',
     frete: 6800, outros: 0, enviadaEm: '20/06/2026',
     itens: [
       it('PA300', 18, 'TIPO — APTOS 1 A 6 — SACADA', 'LAMINADO INCOLOR 06MM'),

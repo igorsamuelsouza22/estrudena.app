@@ -1,6 +1,6 @@
 import { nomeProposta } from '../shared/types'
 import { usePendenciaAtualizacao } from '../atualizacao'
-import { capturarPrecos, ampliarReferencia } from '../historico'
+import { capturarPrecos, ampliarReferencia, numeroRev } from '../historico'
 import { proxRev } from '../calc'
 import { ClienteRapido } from './ClienteRapido'
 import { useMemo, useState } from 'react'
@@ -8,10 +8,10 @@ import { ehProduto } from '../catalogo'
 import { chamar, ponte } from '../api'
 import { fm, fn, num, pc, hoje } from '../format'
 import { Ico } from '../icons'
-import { useAcoes } from '../Shell'
+import { useAcoes, useTitulo } from '../Shell'
 import { useApp } from '../store'
-import { Campo, Card, Modal, SelectComAdd, Tag, muted45, muted50, tagDeStatus } from '../ui'
-import { ModalGerarProposta } from './ModalGerarProposta'
+import { Campo, Card, MaisAcoes, Modal, SelectComAdd, StatusTag, muted45, muted50 } from '../ui'
+import { AcoesProposta } from './AcoesProposta'
 import { PickerItens } from './PickerItens'
 import type { Orcamento as TipoOrcamento, OrcItem } from '../shared/types'
 
@@ -27,9 +27,13 @@ export function Orcamento() {
   const [etapa, setEtapa] = useState(leitura ? 3 : 1)
   const [picker, setPicker] = useState(false)
   const [salvando, setSalvando] = useState(false)
+  const [revisoes, setRevisoes] = useState(false)
   usePendenciaAtualizacao('orçamento com alterações não salvas',!leitura&&app.rascunhos.some(r=>(r.id||r.rascunhoId)===(q.id||q.rascunhoId)),salvando)
-  // Orçamento já gravado, aguardando a escolha dos documentos a emitir.
-  const [gerado, setGerado] = useState<TipoOrcamento | null>(null)
+  // A cópia aberta não acompanha envio e aceite; a situação vem do registro atual.
+  const viva = leitura ? db.orcamentos.find(x => x.id === q.id) ?? q : q
+  const anteriores = q.numero ? db.orcamentos.filter(o => o.numero === q.numero && o.id !== q.id).sort((a, b) => numeroRev(b.rev) - numeroRev(a.rev)) : []
+  const ehUltima = !anteriores.some(o => numeroRev(o.rev) > numeroRev(q.rev))
+  useTitulo(q.numero && q.numero !== '(automático)' ? nomeProposta(q) : 'Novo orçamento')
 
   const t = useMemo(() => motor.calc(q), [motor, q])
 
@@ -57,23 +61,28 @@ export function Orcamento() {
     }
   }
 
+  // Emitir já abre a prévia do PDF; o envio é registrado depois, no cabeçalho.
   const gerar = async () => {
-    if (leitura) { app.imprimir({ orcId: q.id, proposta: true, separacao: false }); return }
     const gravado = await salvar(q.status === 'Rascunho' ? 'Proposta' : q.status)
-    if (gravado) setGerado(gravado)
+    if (gravado) { app.imprimir({ orcId: gravado.id, proposta: true, separacao: false }); app.say(`${nomeProposta(gravado)} emitida. Registre o envio quando mandar ao cliente.`) }
   }
+  const criarRevisao = () => {
+    try { app.abrirOrc({ ...structuredClone(q), origemId: q.id, rascunhoId: crypto.randomUUID(), id: '', rev: proxRev(q.rev), status: 'Rascunho', data: hoje(), vendedor: app.user.nome, enviadaEm: '' }) }
+    catch (e) { app.say(e instanceof Error ? e.message : 'Falha ao criar revisão.') }
+  }
+  const verRevisoes = !!anteriores.length && { rotulo: `Revisões anteriores (${anteriores.length})`, onClick: () => setRevisoes(true) }
 
   useAcoes(
     <>
+      <StatusTag status={viva.status} />
       {!leitura && <button className="btn btn-secondary" disabled={salvando} onClick={() => void salvar()}>{salvando ? 'Salvando…' : 'Salvar rascunho'}</button>}
-      {leitura && <button className="btn btn-secondary" disabled={salvando} onClick={async () => {
-        setSalvando(true)
-        try { app.abrirOrc({ ...structuredClone(q), origemId: q.id, rascunhoId: crypto.randomUUID(), id: '', rev: proxRev(q.rev), status: 'Rascunho', data: hoje(), vendedor: app.user.nome, enviadaEm: '' }) }
-        catch (e) { app.say(e instanceof Error ? e.message : 'Falha ao criar revisão.') } finally { setSalvando(false) }
-      }}>Criar revisão</button>}
-      {leitura && <button className="btn btn-primary" disabled={salvando} onClick={() => void gerar()}>Visualizar PDF</button>}
+      {!leitura && <MaisAcoes itens={[!!q.referenciaPrecos && { rotulo: 'Recalcular com preços atuais', onClick: () => setComparar(true) }, verRevisoes]} />}
+      {leitura && <button className="btn btn-secondary" onClick={() => app.imprimir({ orcId: q.id, proposta: true, separacao: false })}>Visualizar PDF</button>}
+      {leitura && (ehUltima
+        ? <AcoesProposta o={viva} extras={[{ rotulo: 'Criar revisão', onClick: criarRevisao }, ...(verRevisoes ? [verRevisoes] : [])]} />
+        : <MaisAcoes itens={[{ rotulo: 'Criar revisão', onClick: criarRevisao }, verRevisoes]} />)}
     </>,
-    [q, salvando, etapa]
+    [q, viva, salvando, etapa, anteriores.length, app.db]
   )
 
   const clienteEscolhido = db.clientes.some(c => c.id === q.clienteId)
@@ -106,28 +115,12 @@ export function Orcamento() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <button className="btn btn-ghost back-button" style={{alignSelf:'flex-start'}} onClick={()=>app.irPara('lista')}>← Orçamentos</button>
       <div className="budget-steps" aria-label="Etapas do orçamento">{['Cliente e obra','Produtos','Revisar e gerar'].map((nome,i)=><button key={nome} aria-current={etapa===i+1?'step':undefined} onClick={()=>setEtapa(i+1)}><span>{i+1}</span>{nome}</button>)}</div>
-      {!leitura&&q.id&&<div className="notice">Ao salvar alterações, uma nova revisão será criada. {nomeProposta(q)} permanece no histórico.</div>}
-      {leitura && <div className="notice">{nomeProposta(q)} · {q.status}. Esta revisão foi emitida. Crie uma revisão para alterar.</div>}
       {erro && <div className="notice warning" role="alert">{erro} <button className="btn btn-secondary" onClick={() => void salvar()}>Tentar salvar novamente</button></div>}
       <fieldset disabled={leitura || salvando} style={{ border: 0, margin: 0, padding: 0, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div hidden={etapa!==1}>
-      <Card
-        titulo="Cliente e obra"
-        direita={<span style={{ fontSize: 12, letterSpacing: '.02em', color: muted45 }}>{q.rev} · {q.data}</span>}
-      >
+      <Card titulo="Cliente e obra">
         <div className="budget-form">
-          <Campo label="Número (automático)">
-            <div style={{
-              minHeight: 27, display: 'flex', alignItems: 'center', gap: 8,
-              fontFamily: 'var(--font-heading)', fontSize: 16, letterSpacing: '.01em'
-            }}>
-              {nomeProposta(q)}
-              <span style={{ fontFamily: 'var(--font-body)', fontSize: 12, letterSpacing: '.02em', color: muted45 }}>{q.rev}</span>
-            </div>
-          </Campo>
-
           <Campo label="Cliente *" span={2} erro={!q.clienteId && erro ? 'Escolha ou cadastre um cliente.' : undefined}>
             {/* Sem a opção vazia explícita, um clienteId que não casa com
                 nenhuma opção faria o navegador exibir a primeira da lista — o
@@ -170,11 +163,6 @@ export function Orcamento() {
                    onChange={e => setQ(x => ({ ...x, contato: e.target.value }))} />
           </Campo>
 
-          <Campo label="Situação">
-            <div style={{ height: 27, display: 'flex', alignItems: 'center' }}>
-              <Tag tipo={tagDeStatus(q.status)}>{q.status}</Tag>
-            </div>
-          </Campo>
         </div>
       </Card>
 
@@ -218,7 +206,7 @@ export function Orcamento() {
             </div>
             <div className="product-price"><small>Subtotal</small><strong>{fm(r.venda)}</strong><div style={{display:'flex',gap:6,marginTop:16}}><button className="btn btn-ghost" title="Duplicar linha" onClick={()=>setQ(x=>({...x,itens:[...x.itens.slice(0,r.i+1),structuredClone(x.itens[r.i]),...x.itens.slice(r.i+1)]}))}>{Ico.dup()}</button><button className="btn btn-ghost" title="Excluir linha" onClick={()=>setQ(x=>({...x,itens:x.itens.filter((_,k)=>k!==r.i)}))}>{Ico.del()}</button></div></div>
           </div>)}
-          <div className="toolbar" style={{padding:'18px 24px',borderTop:'1px solid var(--color-divider)'}}><small style={{flex:1}}>Os insumos são calculados pela composição dos produtos.</small><strong className="tnum">{fm(t.vendaMat)}</strong></div>
+          <div className="toolbar" style={{padding:'18px 24px',borderTop:'1px solid var(--color-divider)',justifyContent:'flex-end'}}><strong className="tnum">{fm(t.vendaMat)}</strong></div>
           {!q.itens.length && (
             <div style={{ padding: '30px 12px', textAlign: 'center', fontSize: 13, color: muted45 }}>
               Nenhum produto adicionado. Clique em <strong>Inserir produto</strong> para escolher portas, janelas e outros produtos de venda.
@@ -254,45 +242,35 @@ export function Orcamento() {
             />
           </Campo>
 
+          <Campo label="Desconto (%)">
+            <input className="input" type="number" min="0" value={q.desconto} onChange={e => setQ(x => ({ ...x, desconto: num(e.target.value) }))} />
+          </Campo>
+          <Campo label="Margem alvo (%)">
+            <input
+              className="input" type="number" title="Ajusta o markup para chegar a esta margem. Informação interna, não aparece no PDF."
+              value={Math.round(t.margemPct * 10) / 10}
+              onChange={e => { const mku = motor.markupParaMargem(q, num(e.target.value)); setQ(x => ({ ...x, markup: mku, itens: x.itens.map(i => ({ ...i, markup: null })) })) }}
+            />
+          </Campo>
           </div><div style={{padding:'0 22px 22px'}}><strong>{db.clientes.find(c=>c.id===q.clienteId)?.nome||'Cliente a definir'}</strong><p className="muted">{q.obra||'Obra a definir'} · {q.cidade}</p><button className="btn btn-ghost" onClick={()=>setEtapa(1)}>Editar dados da obra</button></div></Card>
-          <aside className="review-summary"><small>Total da proposta</small><strong className="tnum">{fm(t.total)}</strong><p><span>Produtos</span><b>{fn(t.pecas,0)} peças</b></p><p><span>Desconto</span><b>{pc(q.desconto)}</b></p><p><span>Instalação e encargos</span><b>{fm(t.mo)}</b></p>{verCustos&&<><hr/><p><span>Margem estimada</span><b style={{color:t.margemPct<0?'var(--brand-red)':undefined}}>{pc(t.margemPct)}</b></p><small>Informação interna, não aparece no PDF.</small></>}</aside></div>
+          <aside className="review-summary">
+            <small>Total da proposta</small><strong className="tnum">{fm(t.total)}</strong>
+            <p><span>Produtos · {fn(t.pecas,0)} peças</span><b className="tnum">{fm(t.vendaMat)}</b></p>
+            <p><span>Instalação e encargos</span><b className="tnum">{fm(t.mo)}</b></p>
+            {t.desc > 0 && <p><span>Desconto · {pc(q.desconto)}</span><b className="tnum">− {fm(t.desc)}</b></p>}
+            {verCustos && <><hr/>
+              <p title="Informação interna, não aparece no PDF."><span>Margem estimada</span><b className="tnum" style={{color:t.margemPct<0?'var(--brand-red)':undefined}}>{pc(t.margemPct)} · {fm(t.margem)}</b></p>
+              <details className="product-details"><summary>Ver custos</summary>
+                <p><span>Custo de material</span><b className="tnum">{fm(t.custoMat)}</b></p>
+                <p><span>Custos fixos e M.O.</span><b className="tnum">{fm(t.custoMO + t.fixos + t.perda)}</b></p>
+                <p><span>Imposto e comissões</span><b className="tnum">{fm(t.imposto + t.com1 + t.com2)}</b></p>
+                <p><span>Custo total</span><b className="tnum">{fm(t.custoTotal)}</b></p>
+              </details>
+            </>}
+          </aside></div>
 
         <div className="budget-details">
-          <details><summary>Margem, impostos e descontos</summary><Card titulo="Fechamento" altura={29}>
-            <div style={{ padding: '7px 10px 9px' }}>
-              {([
-                ['Markup', 'markup', '%'],
-                ['Margem alvo', '__margem', '%'],
-                ['Imposto', 'imposto', '%'],
-                ['Comissão 1', 'com1', '%'],
-                ['Comissão 2', 'com2', '%'],
-                ['Perda', 'perda', '%'],
-                ['Desconto', 'desconto', '%']
-              ] as const).map(([label, campo, un]) => (
-                <LinhaNum
-                  key={campo} label={label} un={un}
-                  valor={campo === '__margem' ? Math.round(t.margemPct * 10) / 10 : (q[campo] as number)}
-                  onChange={v => {
-                    if (campo === '__margem') {
-                      const mku = motor.markupParaMargem(q, v)
-                      setQ(x => ({ ...x, markup: mku, itens: x.itens.map(i => ({ ...i, markup: null })) }))
-                    } else {
-                      setQ(x => ({ ...x, [campo]: v }))
-                    }
-                  }}
-                />
-              ))}
-              <div style={{
-                fontSize: 12, lineHeight: 1.4, color: muted50,
-                borderTop: '1px solid var(--color-divider)', marginTop: 6, paddingTop: 6
-              }}>
-                Markup e margem estão ligados — editar um recalcula o outro sobre imposto,
-                comissão, frete e instalação.
-              </div>
-            </div>
-          </Card>
-
-          </details><details><summary>Instalação e encargos</summary><Card titulo="Instalação e encargos" altura={29}>
+          <details><summary>Instalação e encargos · {fm(t.mo)}</summary><Card titulo="Instalação e encargos" altura={29}>
             <div style={{ padding: '7px 10px 9px' }}>
               <div style={{
                 display: 'flex', flexDirection: 'column', gap: 4, paddingBottom: 8,
@@ -316,11 +294,9 @@ export function Orcamento() {
                     <option key={i.id} value={i.id}>{i.cod} · {i.nome}</option>
                   ))}
                 </select>
-                <span style={{ fontSize: 12, color: muted50, lineHeight: 1.35 }}>
-                  {instalador
-                    ? `${instalador.tipo} · ${fm(instalador.precoM2)}/m² · diária ${fm(instalador.diaria)} · ${instalador.equipe} pessoas`
-                    : 'Escolha uma equipe para puxar R$/m² e diária do cadastro.'}
-                </span>
+                {instalador && <span style={{ fontSize: 12, color: muted50, lineHeight: 1.35 }}>
+                  {`${instalador.tipo} · ${fm(instalador.precoM2)}/m² · diária ${fm(instalador.diaria)} · ${instalador.equipe} pessoas`}
+                </span>}
               </div>
 
               {([
@@ -342,64 +318,29 @@ export function Orcamento() {
                 />
               ))}
             </div>
-          </Card>
-
-          </details><details><summary>Apuração detalhada</summary><Card titulo="Apuração" altura={29}>
-            <div style={{ padding: '8px 10px 10px' }}>
-              {[
-                ['Venda de material', fm(t.vendaMat), false],
-                ['Instalação e encargos', fm(t.mo), false],
-                ['Subtotal', fm(t.subtotal), false],
-                ['Desconto', '− ' + fm(t.desc), false],
-                ...(verCustos ? [
-                  ['Custo de material', fm(t.custoMat), true],
-                  ['Custos fixos e M.O.', fm(t.custoMO + t.fixos + t.perda), true],
-                  ['Imposto e comissões', fm(t.imposto + t.com1 + t.com2), true],
-                  ['Custo total', fm(t.custoTotal), true]
-                ] as [string, string, boolean][] : [])
-              ].map(([label, valor, fraco]) => (
-                <div key={label as string} style={{
-                  display: 'flex', alignItems: 'baseline', gap: 8, height: 23,
-                  borderBottom: '1px solid color-mix(in srgb, var(--color-text) 7%, transparent)'
-                }}>
-                  <span style={{ flex: 1, fontSize: 13, color: fraco ? muted50 : undefined }}>{label}</span>
-                  <span className="tnum" style={{ fontSize: 13, color: fraco ? muted50 : undefined }}>{valor}</span>
-                </div>
+          </Card></details>
+          <details><summary>Ajustes avançados de preço</summary><Card titulo="Markup, impostos e comissões" altura={29}>
+            <div style={{ padding: '7px 10px 9px' }} title="Vêm das Configurações. Markup e margem estão ligados: editar um recalcula o outro.">
+              {([
+                ['Markup', 'markup'],
+                ['Imposto', 'imposto'],
+                ['Comissão 1', 'com1'],
+                ['Comissão 2', 'com2'],
+                ['Perda', 'perda']
+              ] as const).map(([label, campo]) => (
+                <LinhaNum key={campo} label={label} un="%" valor={q[campo]} onChange={v => setQ(x => ({ ...x, [campo]: v }))} />
               ))}
-
-              <div style={{ fontFamily: 'var(--font-heading)', fontSize: 12, letterSpacing: '.02em', color: muted, marginTop: 10 }}>
-                Valor da proposta
-              </div>
-              <div className="tnum" style={{ fontFamily: 'var(--font-heading)', fontSize: 29, lineHeight: 1.05 }}>{fm(t.total)}</div>
-
-              {verCustos && (
-                <>
-                  <div style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-                    background: 'var(--color-surface)', marginTop: 9, padding: '6px 8px'
-                  }}>
-                    <span style={{ fontSize: 13 }}>Margem líquida</span>
-                    <span className="tnum" style={{
-                      fontFamily: 'var(--font-heading)', fontSize: 19,
-                      color: t.margemPct < 0 ? '#b3261e' : 'var(--color-text)'
-                    }}>{pc(t.margemPct)}</span>
-                  </div>
-                  <div className="tnum" style={{ textAlign: 'right', fontSize: 12, color: muted50, paddingTop: 3 }}>{fm(t.margem)}</div>
-                </>
-              )}
             </div>
           </Card></details>
         </div>
         </div>
       </div>
       </fieldset>
-      <div className="budget-footer"><small role="status">{salvando?'Salvando no servidor…':leitura?'Revisão emitida · valores preservados':'Rascunho · alterações protegidas localmente ao editar'}</small><div>{etapa>1&&<button className="btn btn-secondary" onClick={()=>setEtapa(x=>x-1)}>Voltar</button>}{etapa<3?<button className="btn btn-primary" onClick={()=>setEtapa(x=>x+1)}>Continuar →</button>:<button className="btn btn-primary" disabled={salvando} onClick={()=>void gerar()}>{leitura?'Visualizar PDF':'Gerar proposta'}</button>}</div></div>
-      {!leitura&&etapa===3&&<details><summary>Atualizar os custos deste rascunho</summary><p className="muted">{q.referenciaPrecos?`Preços preservados em ${new Date(q.referenciaPrecos.capturadoEm).toLocaleDateString('pt-BR')}`:'Preços atuais do catálogo'}</p><button className="btn btn-secondary" onClick={()=>setComparar(true)}>Recalcular com preços atuais</button></details>}
-
+      <div className="budget-footer"><small role="status">{salvando?'Salvando no servidor…':leitura?'Revisão emitida · para alterar, use Mais ações → Criar revisão':q.id?'Rascunho · salvar alterações cria uma nova revisão':'Rascunho'}</small><div>{etapa>1&&<button className="btn btn-secondary" onClick={()=>setEtapa(x=>x-1)}>Voltar</button>}{etapa<3?<button className="btn btn-primary" onClick={()=>setEtapa(x=>x+1)}>Continuar →</button>:!leitura&&<button className="btn btn-primary" disabled={salvando} onClick={()=>void gerar()}>Gerar proposta</button>}</div></div>
 
       {clienteRapido && <ClienteRapido onFechar={() => setClienteRapido(false)} onCriado={c => { setQ(x => ({ ...x, clienteId: c.id, cidade: c.cidade, contato: c.contato })); setClienteRapido(false) }} />}
       {comparar && <Modal titulo="Comparar com os preços atuais" onFechar={() => setComparar(false)}>
-        <p>Confira o efeito de atualizar custos, acabamentos, ferragens e composição deste rascunho. Medidas, quantidades e condições comerciais serão mantidas.</p>
+        <p>{q.referenciaPrecos ? `Preços preservados em ${new Date(q.referenciaPrecos.capturadoEm).toLocaleDateString('pt-BR')}.` : 'Preços atuais do catálogo.'} Medidas, quantidades e condições comerciais serão mantidas.</p>
         <table className="table"><thead><tr><th>Indicador</th><th>Preservado</th><th>Atual</th><th>Diferença</th></tr></thead><tbody>
           {(['custoTotal', 'total', 'margem'] as const).map((k, i) => { const atual = motor.calc({ ...q, referenciaPrecos: undefined }); return <tr key={k}><td>{['Custo total', 'Valor da proposta', 'Margem em reais'][i]}</td><td>{fm(t[k])}</td><td>{fm(atual[k])}</td><td>{fm(atual[k] - t[k])}</td></tr> })}
         </tbody></table><div className="toolbar"><button className="btn btn-primary" onClick={() => { setQ(x => ({ ...x, referenciaPrecos: capturarPrecos(db, q.itens.map(it => it.matId)) })); setComparar(false); app.say('Preços atuais aplicados ao rascunho. Salve para gravar a alteração.') }}>Aplicar ao rascunho</button><button className="btn btn-secondary" onClick={() => setComparar(false)}>Manter valores</button></div>
@@ -411,25 +352,17 @@ export function Orcamento() {
           jaNaGrade={q.itens}
         />
       )}
-
-      {gerado && (
-        <ModalGerarProposta
-          numero={gerado.numero} rev={gerado.rev}
-          onFechar={() => { setGerado(null); app.irPara('lista') }}
-          onConfirmar={({ proposta, separacao }) => {
-            setGerado(null)
-            if (proposta || separacao) {
-              app.imprimir({ orcId: gerado.id, proposta, separacao })
-            }
-            app.irPara('lista')
-          }}
-        />
-      )}
+      {revisoes && <Modal titulo="Revisões anteriores" onFechar={() => setRevisoes(false)} largura={620}>
+        {anteriores.map(o => <div className="work-action" key={o.id} style={{ cursor: 'default' }}>
+          <span><strong>{nomeProposta(o)}</strong><small>{o.data} · {o.vendedor}</small></span>
+          <StatusTag status={o.status} />
+          <button className="btn btn-secondary" onClick={() => { setRevisoes(false); app.abrirOrc(o) }}>Abrir</button>
+          <button className="btn btn-ghost" onClick={() => { setRevisoes(false); app.imprimir({ orcId: o.id, proposta: true, separacao: false }) }}>PDF</button>
+        </div>)}
+      </Modal>}
     </div>
   )
 }
-
-const muted = 'color-mix(in srgb, var(--color-text) 55%, transparent)'
 
 function LinhaNum(p: {
   label: string

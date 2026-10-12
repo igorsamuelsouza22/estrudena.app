@@ -37,6 +37,13 @@ export async function carregarPedidos(c: PoolClient, db: DB) {
   db.eventos = (await c.query('SELECT * FROM eventos_negocio ORDER BY data DESC')).rows.map((r): EventoNegocio => ({ ...r, data: r.data.toISOString() }))
 }
 function exigir(ok: unknown, msg: string): asserts ok { if (!ok) throw new Error(msg) }
+function tudoEntregue(p: PedidoVenda) {
+  return p.proposta.itens.every((it, i) => p.entregas.filter(e => e.status === 'Entregue').reduce((s, e) => s + (e.quantidades[i] || 0), 0) >= it.qtd)
+}
+/** v8: a última entrega, com a instalação contratada concluída, encerra o pedido sem outra ação. */
+function concluirSePronto(p: PedidoVenda) {
+  if (p.etapa === 'Pronta para expedição' && tudoEntregue(p) && ['Não contratada', 'Concluída'].includes(p.instalacao)) { p.status = 'Concluído'; p.etapa = 'Concluída' }
+}
 function texto(v: string | undefined, label: string) { exigir(v?.trim(), `Informe ${label}.`); return v!.trim() }
 function dataValida(v: string | undefined) { exigir(v && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v)) && new Date(v).toISOString().slice(0,10) === v, 'Informe uma data válida.'); return v }
 export function validarEmissao(db: DB, o: Orcamento) {
@@ -59,6 +66,8 @@ export async function executarNegocio(db: DB, cmd: ComandoNegocio, usuario: Usua
   const comercial = ['enviar', 'negociar', 'aprovar', 'recusar', 'expirar'].includes(cmd.acao)
   exigir(usuario.ativo, 'Usuário desativado.')
   exigir(pode(db.permissoes?.matriz,usuario.perfil,permissaoComando(cmd.acao)), 'Seu perfil não permite esta operação comercial ou de produção.')
+  // v8: "Em negociação" foi unificada com "Enviada".
+  exigir(cmd.acao !== 'negociar', 'A situação "Em negociação" foi unificada com "Enviada". Atualize este computador para a versão atual.')
   await comCliente(async c => {
     await c.query('BEGIN')
     try {
@@ -71,7 +80,7 @@ export async function executarNegocio(db: DB, cmd: ComandoNegocio, usuario: Usua
         const pedidoRow = (await c.query('SELECT * FROM pedidos_venda WHERE numero=$1 FOR UPDATE', [o.numero])).rows[0]
         if (cmd.acao === 'aprovar' && pedidoRow?.orcamento_id === o.id) { await c.query('COMMIT'); return }
         exigir(cmd.atualizadoEm === row.atualizado_em.toISOString(), 'A proposta mudou em outra sessão. Atualize a tela.')
-        exigir(['Proposta', 'Enviada', 'Em análise'].includes(row.status), 'Esta situação não permite a ação solicitada.')
+        exigir(['Proposta', 'Enviada'].includes(row.status), 'Esta situação não permite a ação solicitada.')
         const ultima = (await c.query('SELECT rev FROM orcamentos WHERE numero=$1', [o.numero])).rows
         exigir(numeroRev(o.rev) === Math.max(...ultima.map(x => numeroRev(x.rev))), 'Somente a última revisão pode ser enviada ou aprovada.')
         const vencida = row.validade_ate && row.validade_ate < new Date().toISOString().slice(0, 10)
@@ -79,7 +88,6 @@ export async function executarNegocio(db: DB, cmd: ComandoNegocio, usuario: Usua
         let status = row.status
         let detalhe = cmd.motivo || ''
         if (cmd.acao === 'enviar') { detalhe = texto(cmd.motivo, 'o canal de envio'); status = 'Enviada'; await c.query('UPDATE orcamentos SET enviada_em=$2 WHERE id=$1', [o.id, new Date().toISOString()]) }
-        if (cmd.acao === 'negociar') status = 'Em análise'
         if (cmd.acao === 'recusar') { detalhe = texto(cmd.motivo, 'o motivo da recusa'); status = 'Perdido' }
         if (cmd.acao === 'expirar') { exigir(vencida, 'A validade da proposta ainda não terminou.'); status = 'Expirada' }
         if (cmd.acao === 'aprovar') {
@@ -136,22 +144,21 @@ export async function executarNegocio(db: DB, cmd: ComandoNegocio, usuario: Usua
           exigir(p.etapa === 'Em separação' || p.etapa === 'Materiais pendentes', 'Etapa inválida para iniciar fabricação.')
           const sep = (await c.query('SELECT status FROM separacoes WHERE orcamento_id=$1', [p.orcamentoId])).rows[0]
           exigir(sep?.status === 'Concluída', 'Conclua a separação antes de iniciar fabricação.')
-          p.etapa = p.compradosProntos.length === p.proposta.itens.length ? 'Em conferência' : 'Em fabricação'; p.status = 'Em execução'
-        } else if (cmd.acao === 'conferir') {
-          exigir(p.etapa === 'Em fabricação', 'Conclua a fabricação antes da conferência final.')
-          texto(cmd.responsavel, 'o responsável pela fabricação'); p.etapa = 'Em conferência'
-        } else if (cmd.acao === 'expedir') {
-          exigir(p.etapa === 'Em conferência', 'O pedido deve estar em conferência final.')
+          p.etapa = 'Em fabricação'; p.status = 'Em execução'
+        } else if (cmd.acao === 'conferir' || cmd.acao === 'expedir') {
+          // v8: fabricação e conferência final são uma ação só; "expedir" segue aceito por compatibilidade.
+          exigir(p.etapa === 'Em fabricação', 'O pedido deve estar em fabricação.')
           exigir(cmd.requisitosConferidos, 'Confirme qualidade e quantidade de todos os produtos.')
-          texto(cmd.responsavel, 'o responsável pela conferência'); p.etapa = 'Pronta para expedição'
+          texto(cmd.responsavel, 'o responsável pela fabricação e conferência'); p.etapa = 'Pronta para expedição'
         } else if (cmd.acao === 'entrega') {
           exigir(p.etapa === 'Pronta para expedição', 'Finalize a conferência antes de programar entregas.')
           const e = structuredClone(cmd.entrega)
           exigir(e, 'Informe a entrega.'); dataValida(e.data); texto(e.responsavel, 'o responsável pela entrega')
-          exigir(['Programada', 'Em transporte', 'Entregue', 'Ocorrência'].includes(e.status), 'Situação da entrega inválida.')
+          // v8: sem "Em transporte". Uma entrega pode ser agendada ou registrada já entregue.
+          exigir(['Programada', 'Entregue', 'Ocorrência'].includes(e.status), 'Situação da entrega inválida.')
           const antiga = p.entregas.find(x => x.id === e.id)
           exigir(!antiga || antiga.status !== 'Entregue', 'Entrega confirmada é imutável.')
-          exigir(antiga ? ({Programada:['Programada','Em transporte','Ocorrência'], 'Em transporte':['Em transporte','Entregue','Ocorrência'], 'Ocorrência':['Programada','Em transporte','Ocorrência'], Entregue:[]}[antiga.status] as string[]).includes(e.status) : e.status === 'Programada', 'Transição de entrega inválida.')
+          exigir(antiga || e.status !== 'Ocorrência', 'Transição de entrega inválida.')
           if (e.status === 'Entregue' || e.status === 'Ocorrência') texto(e.comprovante, 'o comprovante ou a ocorrência')
           exigir(Object.keys(e.quantidades).length > 0 && Object.entries(e.quantidades).every(([i,q]) => /^\d+$/.test(i) && p.proposta.itens[Number(i)] && Number.isFinite(q) && q >= 0) && Object.values(e.quantidades).some(q => q > 0), 'Informe quantidades válidas para a entrega.')
           e.id = antiga?.id || randomUUID()
@@ -160,16 +167,21 @@ export async function executarNegocio(db: DB, cmd: ComandoNegocio, usuario: Usua
             exigir(reservado + (e.quantidades[i] || 0) <= it.qtd + 0.00001, `Quantidade da entrega excede o saldo do produto ${i+1}.`)
           }
           p.entregas = [...p.entregas.filter(x => x.id !== e.id), e]
+          concluirSePronto(p)
         } else if (cmd.acao === 'instalacao') {
+          // v8: A agendar → Agendada → Concluída. Uma pendência é uma observação, sem situação própria.
           exigir(p.instalacao !== 'Não contratada', 'Instalação não contratada neste pedido.')
-          const transicoes: Record<string, string[]> = {'A programar':['Programada'], Programada:['Programada','Em execução','Pendência'], 'Em execução':['Concluída','Pendência'], Pendência:['Programada','Em execução']}
-          exigir(cmd.instalacao && transicoes[p.instalacao]?.includes(cmd.instalacao), 'Transição de instalação inválida.')
-          if (cmd.instalacao === 'Em execução' || cmd.instalacao === 'Concluída') exigir(p.entregas.some(e => e.status === 'Entregue'), 'Registre a entrega antes de iniciar a instalação.')
-          if (cmd.instalacao === 'Concluída') exigir(p.proposta.itens.every((it,i) => p.entregas.filter(e=>e.status==='Entregue').reduce((s,e)=>s+(e.quantidades[i]||0),0) >= it.qtd), 'Entregue todos os produtos antes de concluir a instalação.')
+          exigir(p.instalacao !== 'Concluída', 'A instalação já foi concluída.')
+          exigir(cmd.instalacao === 'Programada' || cmd.instalacao === 'Concluída', 'Transição de instalação inválida.')
+          if (cmd.instalacao === 'Concluída') {
+            exigir(tudoEntregue(p), 'Entregue todos os produtos antes de concluir a instalação.')
+            texto(cmd.motivo, 'o registro ou aceite da instalação')
+          }
           p.instalacaoData = dataValida(cmd.data); p.instalacaoResponsavel = texto(cmd.responsavel, 'a equipe responsável')
-          texto(cmd.motivo, 'o registro da instalação ou aceite'); p.instalacao = cmd.instalacao
+          p.instalacao = cmd.instalacao
+          concluirSePronto(p)
         } else if (cmd.acao === 'concluir') {
-          exigir(p.proposta.itens.every((it,i) => p.entregas.filter(e=>e.status==='Entregue').reduce((s,e)=>s+(e.quantidades[i]||0),0) >= it.qtd), 'Ainda há produtos a entregar.')
+          exigir(tudoEntregue(p), 'Ainda há produtos a entregar.')
           exigir(['Não contratada', 'Concluída'].includes(p.instalacao), 'Conclua a instalação contratada.')
           p.status = 'Concluído'; p.etapa = 'Concluída'
         } else if (cmd.acao === 'cancelar') { texto(cmd.motivo, 'o motivo do cancelamento e o tratamento dos materiais/entregas'); p.status = 'Cancelado' }

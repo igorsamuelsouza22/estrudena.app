@@ -1,7 +1,7 @@
 import { PERMISSAO_TELA } from './permissoes'
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { BuscaGlobal } from './BuscaGlobal'
-import { StatusConexao } from './StatusConexao'
+import { AlertaConexao, Reconectar, useConexao } from './StatusConexao'
 import { lerLocal, guardarLocal } from './rascunhos'
 import { Ico } from './icons'
 import { useApp, type Tela } from './store'
@@ -25,8 +25,9 @@ import { Relatorios } from './screens/Relatorios'
 import { UsuariosTela } from './screens/Usuarios'
 import { Configuracoes } from './screens/Configuracoes'
 
-// Ações do cabeçalho: cada tela publica as suas.
+// Ações e título do cabeçalho: cada tela publica os seus.
 const AcoesCtx = createContext<(n: ReactNode) => void>(() => {})
+const TituloCtx = createContext<(t: string | null) => void>(() => {})
 
 export function useAcoes(nodo: ReactNode, deps: unknown[]): void {
   const set = useContext(AcoesCtx)
@@ -37,25 +38,36 @@ export function useAcoes(nodo: ReactNode, deps: unknown[]): void {
   }, deps)
 }
 
-const TITULOS: Record<Tela, [string, string, string]> = {
-  pedidos: ['Comercial', 'Pedidos de venda', 'Da revisão aceita à entrega e instalação.'],
-  dashboard: ['Início', 'Início', ''],
-  novo: ['Orçamentos', 'Orçamento', 'Da primeira estimativa à proposta do cliente.'],
-  lista: ['Comercial', 'Orçamentos', 'Cada obra em um lugar. Da estimativa à aprovação.'],
-  separacao: ['Produção', 'Produção', 'Organize os pedidos e confira produtos, matérias-primas e ferragens.'],
-  itens: ['Catálogo', 'Produtos', 'Portas, janelas e produtos para incluir nos orçamentos.'],
-  materiasprimas: ['Catálogo', 'Matérias-primas', 'Insumos e custos usados na composição dos produtos.'],
-  apoio: ['Catálogo', 'Cadastros de apoio', 'Ferragens, kits, acabamentos e equipes de instalação.'],
-  clientes: ['Comercial', 'Clientes', 'Contatos, obras e histórico de atendimento.'],
-  cores: ['Catálogo', 'Cores e acabamentos', 'Pintura e acabamento das esquadrias.'],
-  acessorios: ['Catálogo', 'Ferragens e acessórios', 'Componentes utilizados na fabricação.'],
-  kits: ['Catálogo', 'Kits de ferragem', 'Conjuntos de componentes para os produtos.'],
-  kitsvenda: ['Catálogo', 'Kits de venda', 'Combinações de produtos para os orçamentos.'],
-  instaladores: ['Catálogo', 'Equipes de instalação', 'Contatos e custos das equipes.'],
-  relatorios: ['Gestão', 'Resultados', 'Acompanhe as vendas e o resultado do seu negócio.'],
-  usuarios: ['Gestão', 'Pessoas e acessos', 'Gerencie quem pode acessar cada área do sistema.'],
-  config: ['Gestão', 'Configurações', 'Organização e padrões para toda a equipe.']
+/** Troca o título fixo da tela, por exemplo pelo número do orçamento aberto. */
+export function useTitulo(titulo: string | null): void {
+  const set = useContext(TituloCtx)
+  useEffect(() => {
+    set(titulo)
+    return () => set(null)
+  }, [titulo, set])
 }
+
+const TITULOS: Record<Tela, [string, string]> = {
+  pedidos: ['Comercial', 'Pedidos de venda'],
+  dashboard: ['Início', 'Início'],
+  novo: ['Orçamentos', 'Orçamento'],
+  lista: ['Comercial', 'Orçamentos'],
+  separacao: ['Produção', 'Produção'],
+  itens: ['Catálogo', 'Produtos'],
+  materiasprimas: ['Catálogo', 'Matérias-primas'],
+  apoio: ['Catálogo', 'Cadastros de apoio'],
+  clientes: ['Comercial', 'Clientes'],
+  cores: ['Catálogo', 'Cores e acabamentos'],
+  acessorios: ['Catálogo', 'Ferragens e acessórios'],
+  kits: ['Catálogo', 'Kits de ferragem'],
+  kitsvenda: ['Catálogo', 'Kits de venda'],
+  instaladores: ['Catálogo', 'Equipes de instalação'],
+  relatorios: ['Gestão', 'Resultados'],
+  usuarios: ['Gestão', 'Pessoas e acessos'],
+  config: ['Gestão', 'Configurações']
+}
+/** Telas cujo primeiro nível da trilha leva de volta à lista de origem. */
+const PAI: Partial<Record<Tela, Tela>> = { novo: 'lista' }
 const APOIO: {tela: Tela; titulo: string; descricao: string; icone: ReactNode}[] = [
   {tela:'acessorios', titulo:'Ferragens e acessórios', descricao:'Fechos, roldanas e vedação', icone:Ico.aces()},
   {tela:'kits', titulo:'Kits de ferragem', descricao:'Conjuntos de componentes', icone:Ico.kit()},
@@ -68,8 +80,10 @@ export function Shell() {
   const app = useApp()
   const [densidade, setDensidade] = useState(() => lerLocal('estrudena:densidade', 'confortavel'))
   const [acoes, setAcoes] = useState<ReactNode>(null)
+  const [tituloTela, setTituloTela] = useState<string | null>(null)
   const [menus, setMenus] = useState({catalogo: true, gestao: true})
   const [preferencias, setPreferencias] = useState(false)
+  const cx = useConexao()
   const catalogo = ['itens','materiasprimas','apoio',...APOIO.map(x=>x.tela)].includes(app.tela)
   const gestao = ['relatorios','usuarios','config'].includes(app.tela)
   useEffect(() => {
@@ -80,10 +94,12 @@ export function Shell() {
     const permissao=PERMISSAO_TELA[app.tela]
     if(permissao&&!app.pode(permissao))app.irPara('dashboard')
   }, [app.tela, app.perfil, app.db.permissoes])
-  const [crumb,titulo,descricao] = TITULOS[app.tela]
+  const [crumb,tituloFixo] = TITULOS[app.tela]
+  const titulo = tituloTela ?? tituloFixo
+  const pai = PAI[app.tela]
   const iniciais = app.user.nome.split(' ').map(x=>x[0]).slice(0,2).join('')
   const nav = (tela: Tela, label: string, icone?: ReactNode, active=app.tela===tela) => PERMISSAO_TELA[tela]&&!app.pode(PERMISSAO_TELA[tela]!)?null:<button key={tela} className={'navbtn'+(active?' on':'')} aria-current={active?'page':undefined} onClick={()=>{if(tela==='separacao')app.setSepId('');app.irPara(tela)}}>{icone}<span>{label}</span></button>
-  return <AcoesCtx.Provider value={setAcoes}>
+  return <AcoesCtx.Provider value={setAcoes}><TituloCtx.Provider value={setTituloTela}>
     <div className="appshell" data-density={densidade}>
       <aside className="app-sidebar noprint">
         <div className="app-brand"><span className="brand-stripe"/><strong>estrudena.</strong><small>GESTÃO DE ESQUADRIAS</small></div>
@@ -106,19 +122,21 @@ export function Shell() {
             </div>
           </div>}
         </nav>
-        <div className="sidebar-bottom"><StatusConexao />
-          <button className="btn btn-ghost sidebar-preferences" aria-expanded={preferencias} onClick={()=>setPreferencias(x=>!x)}>Preferências de exibição</button>
-          {preferencias && <label className="field">Espaçamento<select aria-label="Densidade da interface" className="input" value={densidade} onChange={e=>{setDensidade(e.target.value);guardarLocal('estrudena:densidade',e.target.value)}}><option value="confortavel">Confortável</option><option value="compacta">Compacta</option></select></label>}
-        </div>
-        <div className="app-profile"><span className="avatar">{iniciais}</span><div className="profile-name"><div className="trunc">{app.user.nome}</div><small>{app.perfil}</small></div><button className="btn btn-ghost" title="Sair" aria-label="Sair" onClick={app.sair}>{Ico.sair()}</button></div>
+        <AlertaConexao cx={cx} />
+        {preferencias && <div className="profile-menu" id="menu-preferencias">
+          <span role="status">{cx.status === 'conectado' ? 'Servidor conectado' : cx.status === 'verificando' ? 'Verificando servidor…' : 'Servidor indisponível'}</span>
+          <Reconectar cx={cx} />
+          <label className="field">Espaçamento<select aria-label="Densidade da interface" className="input" value={densidade} onChange={e=>{setDensidade(e.target.value);guardarLocal('estrudena:densidade',e.target.value)}}><option value="confortavel">Confortável</option><option value="compacta">Compacta</option></select></label>
+        </div>}
+        <div className="app-profile"><span className="avatar">{iniciais}</span><div className="profile-name"><div className="trunc">{app.user.nome}</div><small>{app.perfil}</small></div><button className="btn btn-ghost" title="Preferências e conexão" aria-label="Preferências e conexão" aria-expanded={preferencias} aria-controls="menu-preferencias" onClick={()=>setPreferencias(x=>!x)}>{Ico.cfg()}</button><button className="btn btn-ghost" title="Sair" aria-label="Sair" onClick={app.sair}>{Ico.sair()}</button></div>
       </aside>
       <main className="appmain">
-        <header className="app-topbar noprint"><div className="breadcrumb">{crumb}{crumb!==titulo && <><span>/</span><strong>{titulo}</strong></>}</div><BuscaGlobal /></header>
+        <header className="app-topbar noprint"><div className="breadcrumb">{pai?<button className="crumb-link" onClick={()=>app.irPara(pai)}>{crumb}</button>:crumb}{crumb!==titulo && <><span>/</span><strong>{titulo}</strong></>}</div><BuscaGlobal /></header>
         {app.flash && <div className="flash-panel noprint" role="status" aria-live="polite">{app.flash}<button className="btn btn-ghost" aria-label="Fechar aviso" onClick={()=>app.say('')}>×</button></div>}
         <AvisoAtualizacao />
         <div className="appscroll">
           <div className="noprint screen-content" data-screen={app.tela}>
-            {app.tela!=='dashboard' && <div className="page-heading"><div><h1>{titulo}</h1><p>{descricao}</p></div><div className="page-actions">{acoes}</div></div>}
+            {app.tela!=='dashboard' && <div className="page-heading"><h1>{titulo}</h1><div className="page-actions">{acoes}</div></div>}
             {APOIO.some(x=>x.tela===app.tela) && <button className="btn btn-ghost back-button" onClick={()=>app.irPara('apoio')}>← Cadastros de apoio</button>}
             {(!PERMISSAO_TELA[app.tela]||app.pode(PERMISSAO_TELA[app.tela]!))&&<Conteudo tela={app.tela}/>}
           </div>
@@ -126,7 +144,7 @@ export function Shell() {
         </div>
       </main>
     </div>
-  </AcoesCtx.Provider>
+  </TituloCtx.Provider></AcoesCtx.Provider>
 }
 
 function CadastrosApoio(){const app=useApp();return <div className="settings-grid">{APOIO.map(x=><button className="settings-link" key={x.tela} onClick={()=>app.irPara(x.tela)}>{x.icone}<span><strong>{x.titulo}</strong><small>{x.descricao}</small></span><span aria-hidden="true">→</span></button>)}</div>}

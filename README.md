@@ -122,11 +122,11 @@ no servidor e reinstale os terminais.
 
 - `Ctrl+K` pesquisa clientes, produtos, insumos e a revisão vigente das propostas, respeitando as telas disponíveis ao perfil.
 - O menu oferece densidade confortável ou compacta. Produtos possuem abas Dados gerais, Composição, Preço e Imagem.
-- Fichas e orçamentos mantêm cópias locais por usuário e registro. Use **Recuperar** nos cadastros ou **Retomar rascunho local** no painel após navegar ou reabrir. A cópia local não substitui o botão Salvar no servidor. Senhas não são persistidas em rascunhos.
-- Propostas emitidas abrem para consulta. **Criar revisão** preserva o conteúdo e gera uma nova revisão em rascunho. **Recalcular com preços atuais** mostra a comparação antes de substituir a referência de preços.
+- Fichas e orçamentos mantêm cópias locais por usuário e registro. Use **Recuperar** nos cadastros ou os itens **Continuar…** do Início após navegar ou reabrir. A cópia local não substitui o botão Salvar no servidor. Senhas não são persistidas em rascunhos.
+- Propostas emitidas abrem para consulta, com a próxima ação em destaque no cabeçalho (registrar envio, aprovar ou ver o pedido) e as demais em **Mais ações**. **Criar revisão** preserva o conteúdo e gera uma nova revisão em rascunho. **Recalcular com preços atuais** mostra a comparação antes de substituir a referência de preços. **Gerar proposta** grava a revisão e abre a prévia do PDF.
 - O schema v5 preserva os produtos, composições, acabamentos, ferragens e parâmetros de custo usados em cada proposta. Registros anteriores são preservados com os valores disponíveis na primeira leitura após a migração; preços históricos que não foram armazenados não podem ser reconstruídos.
 - A carteira aprovada e a fábrica usam a revisão aceita vinculada ao pedido de venda. Uma nova revisão em negociação não substitui o contrato em execução. Os relatórios têm filtros de data, vendedor e situação.
-- Na produção, salve a conferência de produtos, matérias-primas e ferragens. A conclusão exige todas as quantidades conferidas. Prioridade e data de entrega organizam a fila.
+- A separação fica dentro do pedido: marque cada linha de produto, matéria-prima e ferragem (ou digite a quantidade parcial) e salve. A primeira gravação inicia a separação; a conclusão exige todas as linhas completas. Prioridade e data de entrega organizam a fila da Produção.
 - PDFs abrem em prévia antes do diálogo de gravação. O pedido de produção não exibe preços. A prévia usa os dados já salvos no servidor.
 - Conflitos de gravação de orçamento preservam o rascunho e pedem a abertura da versão atual; não sobrescrevem silenciosamente outra sessão.
 
@@ -140,6 +140,18 @@ Validação dos fluxos de interface: execute `npm run build` e `npm run teste:ux
 O fluxo de proposta, aceite, pedido, ordem de produção, entregas parciais e instalação está descrito em [docs/fluxo-de-negocio-proposto.md](docs/fluxo-de-negocio-proposto.md). Cada edição salva cria `numero.revN`, preservando o histórico. Aprovações são transacionais e idempotentes. Pedidos antigos importados pedem conferência do aceite e da instalação pelo administrador.
 
 `npm run teste:negocio` valida as regras no servidor em um schema temporário. `npm run teste:ux` também percorre aprovação, liberação, fabricação, qualidade, entrega e conclusão pelas telas.
+
+## Situações simplificadas (schema v8)
+
+Menos situações para a mesma operação, sem perder as garantias do servidor (detalhes em [docs/simplificacao-proposta.md](docs/simplificacao-proposta.md)):
+
+- Proposta: Rascunho → Emitida → Enviada → Aprovada ou Perdida. "Em negociação" foi unificada com "Enviada". Uma proposta emitida ou enviada cuja validade passou aparece como **Expirada** automaticamente, sem ação manual.
+- Pedido: concluir a separação já leva o pedido à fabricação. **Fabricação concluída e conferida** é uma ação só, que inclui a conferência final de qualidade.
+- Entrega: Agendada → Entregue (ou Ocorrência), podendo ser registrada direto como entregue. Entrega confirmada continua imutável.
+- Instalação: A agendar → Agendada → Concluída. Pendências são registradas como observação no histórico.
+- O pedido se conclui sozinho com a última entrega e, se contratada, a instalação concluída.
+
+A migração v8 converte os registros existentes ("Em análise" → "Enviada", "Em conferência" → "Em fabricação", separação já concluída → "Em fabricação", "Em transporte" → "Agendada", instalação "Em execução"/"Pendência" → "Agendada") e preserva o histórico de eventos. As regras rodam no processo principal de cada computador: atualize o servidor e todos os terminais juntos.
 
 
 ## Configurações da empresa

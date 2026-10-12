@@ -2,7 +2,8 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { Client } from 'pg'
 import { DB_NAME, DB_PASSWORD, DB_PORT, DB_USER } from '../electron/db/credentials'
-import { conectar, encerrar } from '../electron/db/pool'
+import { comCliente, conectar, encerrar } from '../electron/db/pool'
+import { simplificarSituacoes } from '../electron/db/migrate'
 import * as repo from '../electron/db/repo'
 import { executarNegocio, dadosPorPerfil } from '../electron/db/negocio'
 import { Motor } from '../src/calc'
@@ -32,7 +33,8 @@ async function main(){
   await assert.rejects(cmd({acao:'aprovar',id:o.id,atualizadoEm:o.atualizadoEm}),/quem aprovou/)
   await cmd({acao:'enviar',id:o.id,atualizadoEm:o.atualizadoEm,motivo:'E-mail arquivado'})
   o=(await repo.carregarDB()).orcamentos.find(x=>x.id===o.id)!
-  assert.ok(o.enviadaEm)
+  assert.ok(o.enviadaEm);assert.equal(o.status,'Enviada')
+  await assert.rejects(cmd({acao:'negociar',id:o.id,atualizadoEm:o.atualizadoEm}),/unificada/)
   const aceite:ComandoNegocio={acao:'aprovar',id:o.id,atualizadoEm:o.atualizadoEm,responsavel:'Cliente de teste',evidencia:'Documento assinado',instalacaoContratada:true}
   await Promise.all([cmd(aceite),cmd(aceite)])
   db=await repo.carregarDB();assert.equal(db.pedidos?.filter(p=>p.numero===o.numero).length,1)
@@ -51,22 +53,29 @@ async function main(){
   await repo.salvarSeparacao(o.id,s,admin.nome);await atualizar()
   const salvo=db.separacoes[o.id];await assert.rejects(repo.salvarSeparacao(o.id,s),/Outra pessoa/)
   await assert.rejects(repo.salvarSeparacao(o.id,{...salvo,status:'Concluída',insumos:{}}),/todos os produtos/)
-  await repo.salvarSeparacao(o.id,{...salvo,status:'Concluída'});await atualizar()
-  await pc({acao:'fabricar'});await pc({acao:'conferir',responsavel:'Fábrica'})
-  await assert.rejects(pc({acao:'expedir',responsavel:'Qualidade'}),/qualidade/)
-  await pc({acao:'expedir',responsavel:'Qualidade',requisitosConferidos:true})
+  // v8: concluir a separação já põe o pedido em fabricação; fabricação e conferência final são uma ação.
+  await repo.salvarSeparacao(o.id,{...salvo,status:'Concluída'});await atualizar();assert.equal(p.etapa,'Em fabricação')
+  await assert.rejects(pc({acao:'conferir',responsavel:'Fábrica'}),/qualidade/)
+  await pc({acao:'conferir',responsavel:'Fábrica',requisitosConferidos:true});assert.equal(p.etapa,'Pronta para expedição')
   await assert.rejects(pc({acao:'concluir'}),/a entregar/)
   await pc({acao:'entrega',entrega:{id:'',data:'2026-12-01',status:'Programada',responsavel:'Motorista',comprovante:'',quantidades:{0:2}}})
-  let e=p.entregas[0];await pc({acao:'entrega',entrega:{...e,status:'Em transporte'}});e=p.entregas[0]
+  const e=p.entregas[0]
+  await assert.rejects(pc({acao:'entrega',entrega:{...e,status:'Em transporte' as never}}),/inválida/)
   await assert.rejects(pc({acao:'entrega',entrega:{...e,status:'Entregue'}}),/comprovante/)
   await pc({acao:'entrega',entrega:{...e,status:'Entregue',comprovante:'Recibo 1'}})
+  await assert.rejects(pc({acao:'entrega',entrega:{...p.entregas[0],status:'Ocorrência',comprovante:'Avaria'}}),/imutável/)
   await assert.rejects(pc({acao:'entrega',entrega:{id:'',data:'2026-12-02',status:'Programada',responsavel:'Motorista',comprovante:'',quantidades:{0:3}}}),/excede o saldo/)
-  await pc({acao:'entrega',entrega:{id:'',data:'2026-12-02',status:'Programada',responsavel:'Motorista',comprovante:'',quantidades:{0:2}}})
-  e=p.entregas[1];await pc({acao:'entrega',entrega:{...e,status:'Em transporte'}});e=p.entregas[1]
-  await pc({acao:'entrega',entrega:{...e,status:'Entregue',comprovante:'Recibo 2'}})
+  // Entrega registrada já entregue, sem agendar antes. A instalação contratada segura a conclusão.
+  await pc({acao:'entrega',entrega:{id:'',data:'2026-12-02',status:'Entregue',responsavel:'Motorista',comprovante:'Recibo 2',quantidades:{0:2}}})
+  assert.equal(p.status,'Em execução')
   await assert.rejects(pc({acao:'concluir'}),/instalação/)
-  for(const instalacao of ['Programada','Em execução','Concluída'] as const)await pc({acao:'instalacao',instalacao,data:'2026-12-03',responsavel:'Instaladores',motivo:'Aceite da etapa'})
-  await pc({acao:'concluir'});assert.equal(p.status,'Concluído')
+  await assert.rejects(pc({acao:'instalacao',instalacao:'Em execução' as never,data:'2026-12-03',responsavel:'Instaladores'}),/inválida/)
+  await pc({acao:'instalacao',instalacao:'Programada',data:'2026-12-03',responsavel:'Instaladores'})
+  await pc({acao:'instalacao',instalacao:'Programada',data:'2026-12-04',responsavel:'Instaladores',motivo:'Pendência: reagendada a pedido do cliente'})
+  await assert.rejects(pc({acao:'instalacao',instalacao:'Concluída',data:'2026-12-04',responsavel:'Instaladores'}),/aceite/)
+  // A instalação concluída encerra o pedido, sem a ação "Concluir pedido".
+  await pc({acao:'instalacao',instalacao:'Concluída',data:'2026-12-04',responsavel:'Instaladores',motivo:'Aceite do cliente'})
+  assert.equal(p.status,'Concluído');assert.equal(p.etapa,'Concluída')
   await assert.rejects(pc({acao:'cancelar',motivo:'Teste'}),/encerrado/)
   const dto=dadosPorPerfil(db,op);assert.equal(dto.pedidos!.find(x=>x.id===p.id)!.total,0);assert.equal(dto.pedidos!.find(x=>x.id===p.id)!.proposta.markup,0);assert.equal(dto.orcamentos.some(x=>x.id===rev3.id),false)
   assert.ok(db.eventos!.filter(x=>x.numero===p.numero).length>=13)
@@ -81,9 +90,25 @@ async function main(){
   assert.equal(pad.orcamentoId,ad.id);assert.equal(pad.revisoesAnteriores[0].proposta.id,a.id);assert.equal(pad.etapa,'Aguardando liberação')
   await cmd({acao:'cancelar',id:pad.id,versao:pad.versao,motivo:'Cliente cancelou; sem materiais consumidos'})
   await assert.rejects(repo.excluir('orcamentos',ad.id),/histórico/)
+  // Validade vencida: aparece como Expirada sem ação manual e não pode mais ser aprovada.
+  let v=await repo.salvarOrcamento({...primeira,id:'',numero:'(automático)',atualizadoEm:undefined,referenciaPrecos:undefined,status:'Proposta'})
+  await controle.query(`UPDATE "${schema}".orcamentos SET validade_ate='2000-01-01' WHERE id=$1`,[v.id])
+  v=(await repo.carregarDB()).orcamentos.find(x=>x.id===v.id)!
+  assert.equal(v.status,'Expirada')
+  await assert.rejects(cmd({acao:'aprovar',id:v.id,atualizadoEm:v.atualizadoEm,responsavel:'Cliente',evidencia:'E-mail'}),/expirada/i)
+  // Migração v8: situações antigas convertidas, sem apagar o pedido.
+  db=await repo.carregarDB();const cancelado=db.pedidos!.find(x=>x.id===pad.id)!
+  const antigo={...cancelado,status:'Em execução',etapa:'Em conferência',instalacao:'Pendência',entregas:[{id:'e-antiga',data:'2026-12-01',status:'Em transporte',responsavel:'Motorista',comprovante:'',quantidades:{0:1}}]}
+  await controle.query(`UPDATE "${schema}".pedidos_venda SET dados=$2 WHERE id=$1`,[pad.id,JSON.stringify(antigo)])
+  await controle.query(`UPDATE "${schema}".orcamentos SET status='Em análise' WHERE id=$1`,[a.id])
+  await comCliente(c=>simplificarSituacoes(c))
+  const migrado=(await repo.carregarDB()).pedidos!.find(x=>x.id===pad.id)!
+  assert.deepEqual([migrado.etapa,migrado.instalacao,migrado.entregas[0].status,migrado.versao],['Em fabricação','Programada','Programada',cancelado.versao+1])
+  assert.equal((await controle.query(`SELECT status FROM "${schema}".orcamentos WHERE id=$1`,[a.id])).rows[0].status,'Enviada')
   console.log('OK: rev1/rev2, histórico, no-op, concorrência, emissão/envio, aprovação idempotente e permissões.')
   console.log('OK: pedido congelado, aditivo, liberação, separação validada, fabricação e qualidade.')
   console.log('OK: entregas parciais, saldo, comprovante, instalação, encerramento, cancelamento e auditoria.')
+  console.log('OK: v8 — separação avança, fabricação conferida, entrega direta, instalação simplificada, conclusão automática, expiração calculada e migração.')
  }finally{await encerrar();await controle.query(`DROP SCHEMA "${schema}" CASCADE`);await controle.end()}
 }
 main().catch(e=>{console.error(e);process.exitCode=1})

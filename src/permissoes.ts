@@ -2,7 +2,7 @@ import type { ComandoNegocio, Perfil } from './shared/types'
 export const PERFIS: Perfil[] = ['Administrador','Vendedor','Produção']
 export const RECURSOS = [
  ['valores','Valores, custos e margens','Dados financeiros','Exibe valores comerciais nos dados e documentos permitidos.'],
- ['orcamentos','Orçamentos e propostas','Comercial','Criar, revisar, emitir, enviar e negociar propostas.'],
+ ['orcamentos','Orçamentos e propostas','Comercial','Criar, revisar, emitir e enviar propostas.'],
  ['clientes','Clientes','Comercial','Consultar, cadastrar e editar clientes.'],
  ['aprovar','Aprovar propostas','Comercial','Registrar aceite inicial e gerar o pedido de venda.'],
  ['aditivos','Aprovar aditivos','Comercial','Substituir a revisão aceita, respeitando as regras do pedido.'],

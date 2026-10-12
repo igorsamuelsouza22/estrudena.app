@@ -1,5 +1,7 @@
 # Implementação do fluxo — 07/09/2026
 
+> **Atualização de 12/10/2026:** as situações descritas abaixo foram simplificadas no schema v8. Em caso de diferença, valem [simplificacao-proposta.md](simplificacao-proposta.md) e a seção "Situações simplificadas (schema v8)" do README: proposta sem "Em análise", fabricação com a conferência final, entrega sem "Em transporte", instalação sem "Em execução"/"Pendência" e conclusão automática do pedido.
+
 O fluxo principal está implementado no aplicativo local:
 
 **Orçamento → proposta emitida → envio/negociação → aceite → pedido de venda → liberação técnica → separação → fabricação → conferência final → entrega → instalação contratada → conclusão.**

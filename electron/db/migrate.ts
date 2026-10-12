@@ -7,10 +7,31 @@ import {
   LISTAS, MATERIAIS, ORCAMENTOS_EXEMPLO, USUARIOS
 } from './seed-data'
 
-export const VERSAO_ATUAL = 7
+export const VERSAO_ATUAL = 8
 
 /** Repositório padrão de onde as atualizações chegam. */
 export const REPO_PADRAO = 'igorsamuelsouza22/estrudena.app'
+
+/**
+ * v8: menos situações para a mesma operação. "Em análise" vira "Enviada";
+ * conferência final passa a ser parte da fabricação; entrega sem "Em
+ * transporte"; instalação sem "Em execução" e "Pendência"; separação concluída
+ * já está em fabricação. Nada é apagado: o histórico de eventos fica como estava.
+ */
+export async function simplificarSituacoes(c: PoolClient): Promise<void> {
+  await c.query("UPDATE orcamentos SET status = 'Enviada' WHERE status = 'Em análise'")
+  const concluidas = new Set((await c.query("SELECT orcamento_id FROM separacoes WHERE status = 'Concluída'")).rows.map(r => r.orcamento_id))
+  const { rows } = await c.query('SELECT id, orcamento_id, dados FROM pedidos_venda')
+  for (const r of rows) {
+    const p = r.dados
+    const antes = JSON.stringify(p)
+    if (p.etapa === 'Em conferência') p.etapa = 'Em fabricação'
+    if (['Materiais pendentes', 'Em separação'].includes(p.etapa) && concluidas.has(r.orcamento_id) && !['Cancelado', 'Concluído'].includes(p.status)) { p.etapa = 'Em fabricação'; p.status = 'Em execução' }
+    if (['Em execução', 'Pendência'].includes(p.instalacao)) p.instalacao = 'Programada'
+    for (const e of p.entregas || []) if (e.status === 'Em transporte') e.status = 'Programada'
+    if (JSON.stringify(p) !== antes) await c.query('UPDATE pedidos_venda SET dados = $2, versao = versao + 1 WHERE id = $1', [r.id, JSON.stringify(p)])
+  }
+}
 
 /** Cria o schema (idempotente) e popula o catálogo na primeira vez. */
 export async function migrar(c: PoolClient): Promise<void> {
@@ -55,6 +76,7 @@ export async function migrar(c: PoolClient): Promise<void> {
       ) UPDATE orcamentos o SET rev='rev' || r.n FROM revisoes r WHERE o.id=r.id`)
     }
     if(atual < 7) await c.query('INSERT INTO permissoes_perfis(id,matriz) VALUES(true,$1) ON CONFLICT(id) DO NOTHING',[JSON.stringify(matrizPadrao())])
+    if (atual < 8) await simplificarSituacoes(c)
     await c.query('INSERT INTO schema_versao (versao) VALUES ($1)', [VERSAO_ATUAL])
     await c.query('COMMIT')
   } catch (e) {
