@@ -31,6 +31,7 @@ PostgreSQL embutido — não é preciso instalar nada antes, nem ter internet.
 - O acabamento do insumo compõe seu custo. Quando há composição, a cor do
   produto identifica o acabamento na proposta, sem acrescentar pintura novamente.
 - A produção e seu PDF mostram o consumo das matérias-primas, antes de perdas.
+- Produtos revendidos podem ser marcados como **Comprado pronto** na ficha (Dados gerais). A liberação dos pedidos já os traz marcados, sem separação de matérias-primas; a marcação ainda pode ser ajustada em cada pedido.
 - Cadastros sem composição continuam usando o cálculo anterior. A migração
   classifica os quatro insumos conhecidos de vidro/ACM e preserva as propostas
   antigas, inclusive suas revisões. Kits que continham insumos precisam ser

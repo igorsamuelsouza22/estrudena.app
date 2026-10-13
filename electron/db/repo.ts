@@ -132,7 +132,7 @@ export async function carregarDB(): Promise<DB> {
         aces: matAces.get(r.id) ?? [],
         img: r.img ?? '', imgData: r.img_data,
         markup: num(r.markup, 52), imposto: num(r.imposto, 7),
-        comissao: num(r.comissao, 5), moM2: num(r.mo_m2)
+        comissao: num(r.comissao, 5), moM2: num(r.mo_m2), compradoPronto: r.comprado_pronto === true
       })),
       cores: coresQ.rows.map((r): Cor => ({
         id: r.id, cod: r.cod, nome: r.nome, acabamento: r.acabamento, fornecedor: r.fornecedor,
@@ -291,18 +291,19 @@ export async function salvarMaterial(m: Material): Promise<void> {
       await c.query(
         `INSERT INTO materiais (
            id, cod, descricao, serie, tipo, unidade, peso_unit, larg, alt, preco, fc,
-           cor_id, kit_id, img, img_data, markup, imposto, comissao, mo_m2, categoria
-         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+           cor_id, kit_id, img, img_data, markup, imposto, comissao, mo_m2, categoria, comprado_pronto
+         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
          ON CONFLICT (id) DO UPDATE SET
            cod=EXCLUDED.cod, descricao=EXCLUDED.descricao, serie=EXCLUDED.serie,
            tipo=EXCLUDED.tipo, unidade=EXCLUDED.unidade, peso_unit=EXCLUDED.peso_unit,
            larg=EXCLUDED.larg, alt=EXCLUDED.alt, preco=EXCLUDED.preco, fc=EXCLUDED.fc,
            cor_id=EXCLUDED.cor_id, kit_id=EXCLUDED.kit_id, img=EXCLUDED.img,
            img_data=EXCLUDED.img_data, markup=EXCLUDED.markup, imposto=EXCLUDED.imposto,
-           comissao=EXCLUDED.comissao, mo_m2=EXCLUDED.mo_m2, categoria=EXCLUDED.categoria`,
+           comissao=EXCLUDED.comissao, mo_m2=EXCLUDED.mo_m2, categoria=EXCLUDED.categoria,
+           comprado_pronto=EXCLUDED.comprado_pronto`,
         [m.id, m.cod, m.desc, m.serie, m.tipo, m.unidade, m.pesoUnit, m.larg, m.alt,
           m.preco, m.fc, m.corId || null, m.kitId || null, m.img, m.imgData,
-          m.markup, m.imposto, m.comissao, m.moM2, m.categoria]
+          m.markup, m.imposto, m.comissao, m.moM2, m.categoria, m.categoria === 'produto' && !!m.compradoPronto]
       )
       await c.query('UPDATE materiais SET atualizado_em=now() WHERE id=$1', [m.id])
       await c.query('DELETE FROM produto_materiais WHERE produto_id = $1', [m.id])

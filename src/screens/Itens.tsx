@@ -89,7 +89,7 @@ export function Itens() {
       lista={lista.length ? lista.map(m => (
         <button key={m.id} className="catalog-tile" onClick={() => {cad.selecionar(m);setAba('Composição')}}>
           {m.imgData || m.img ? <img src={m.imgData || `assets/${m.img}.png`} alt={m.desc}/> : <div className="product-art" style={{display:'grid',placeItems:'center',height:145}}>{Ico.itens(36)}</div>}
-          <span><small>{m.cod} / {m.serie}</small><strong>{m.desc}</strong><span className="tag" style={{background:m.composicao?.length?'var(--color-accent-100)':'var(--color-surface)',color:'var(--color-accent)'}}>{m.composicao?.length?'Composição cadastrada':'Custo manual'}</span></span>
+          <span><small>{m.cod} / {m.serie}</small><strong>{m.desc}</strong><span className="tag" style={{background:m.composicao?.length||m.compradoPronto?'var(--color-accent-100)':'var(--color-surface)',color:'var(--color-accent)'}}>{m.compradoPronto?'Comprado pronto':m.composicao?.length?'Composição cadastrada':'Custo manual'}</span></span>
         </button>
       )) : <Vazio>Nenhum produto encontrado. Ajuste a busca ou cadastre um produto.</Vazio>}
       ficha={f && (
@@ -147,6 +147,10 @@ export function Itens() {
               <select className="input" value={f.categoria ?? 'produto'} onChange={e => cad.alterar({ categoria: e.target.value as Material['categoria'] })}>
                 <option value="produto">Produto para orçamento</option><option value="materia_prima">Matéria-prima</option>
               </select>
+            </Campo>
+
+            <Campo label="Fabricação" span={2} nota={f.compradoPronto ? 'Na liberação dos pedidos, já vem marcado: não passa pela separação de matérias-primas.' : undefined}>
+              <label className="workflow-check"><input type="checkbox" checked={!!f.compradoPronto} onChange={e => cad.alterar({ compradoPronto: e.target.checked })} />Comprado pronto (revenda, sem fabricação)</label>
             </Campo>
 
             <Campo

@@ -68,12 +68,13 @@ function AcoesPedido({p,r,cabecalho,children}:{p:PedidoVenda;r:ReturnType<typeof
   const [instalar,setInstalar]=useState(false)
   const [conferido,setConferido]=useState(false)
   const [comprados,setComprados]=useState<number[]>([])
+  const [verComprados,setVerComprados]=useState(false)
   const [prioridade,setPrioridade]=useState(p.prioridade)
   const [instalacao,setInstalacao]=useState<PedidoVenda['instalacao']>('Programada')
   const [entrega,setEntrega]=useState<EntregaPedido|null>(null)
   const [erro,setErro]=useState('')
   const [salvando,setSalvando]=useState(false)
-  const abrir=(a:Acao)=>{setErro('');setAcao(a);setConferido(false);setMotivo('');if(a==='instalacao'){setInstalacao(r.tudoEntregue&&p.instalacao==='Programada'?'Concluída':'Programada');if(r.tudoEntregue)setData(new Date().toISOString().slice(0,10))}}
+  const abrir=(a:Acao)=>{setErro('');setAcao(a);setConferido(false);setMotivo('');if(a==='liberar'){setComprados(doCadastro);setVerComprados(semComposicao.some(i=>!doCadastro.includes(i)))}if(a==='instalacao'){setInstalacao(r.tudoEntregue&&p.instalacao==='Programada'?'Concluída':'Programada');if(r.tudoEntregue)setData(new Date().toISOString().slice(0,10))}}
   const novaEntrega=()=>{setEntrega({id:'',data:new Date().toISOString().slice(0,10),responsavel:app.user.nome,status:'Programada',comprovante:'',quantidades:Object.fromEntries(p.proposta.itens.map((it,i)=>[i,Math.max(0,it.qtd-p.entregas.reduce((s,e)=>s+(e.quantidades[i]||0),0))]))});abrir('entrega')}
   const executar=async()=>{
     if(!acao||salvando)return
@@ -102,6 +103,9 @@ function AcoesPedido({p,r,cabecalho,children}:{p:PedidoVenda;r:ReturnType<typeof
   const cat=catalogoDoPedido(app.db,p.proposta)
   const nomeItem=(i:number)=>{const it=p.proposta.itens[i];return it.desc||p.proposta.referenciaPrecos?.materiais.find(m=>m.id===it.matId)?.desc||`Produto ${i+1}`}
   const semComposicao=p.proposta.itens.map((it,i)=>cat.materiais.find(m=>m.id===it.matId)?.composicao?.length?-1:i).filter(i=>i>=0)
+  // "Comprado pronto" vem do cadastro atual do produto; a pessoa só decide o que falta.
+  const doCadastro=p.proposta.itens.map((it,i)=>app.db.materiais.find(m=>m.id===it.matId)?.compradoPronto?i:-1).filter(i=>i>=0)
+  const pendentes=semComposicao.filter(i=>!comprados.includes(i))
   return <>
     {cabecalho((principal||menu.some(Boolean))&&<div className="toolbar order-actions">
       {principal&&<button className="btn btn-primary" onClick={()=>abrirPrincipal(principal!)}>{TITULOS[principal]}</button>}
@@ -117,8 +121,8 @@ function AcoesPedido({p,r,cabecalho,children}:{p:PedidoVenda;r:ReturnType<typeof
       {acao==='regularizar'&&<label className="workflow-check"><input type="checkbox" checked={instalar} onChange={e=>setInstalar(e.target.checked)}/>Instalação contratada no aceite original</label>}
       {acao==='liberar'&&<>
         <label className="workflow-check"><input type="checkbox" checked={conferido} onChange={e=>setConferido(e.target.checked)}/>Medidas finais e requisitos internos conferidos.</label>
-        <details open={semComposicao.length>0}><summary>Produtos comprados prontos{semComposicao.length?` · ${semComposicao.length} sem composição`:''}</summary>
-          <div className="workflow-form" style={{padding:'12px 0'}}>{p.proposta.itens.map((_,i)=><label className="workflow-check" key={i}><input type="checkbox" checked={comprados.includes(i)} onChange={e=>setComprados(a=>e.target.checked?[...a,i]:a.filter(n=>n!==i))}/>{i+1}. {nomeItem(i)}{semComposicao.includes(i)&&<small className="muted"> · sem composição</small>}</label>)}</div>
+        <details open={verComprados} onToggle={e=>setVerComprados((e.target as HTMLDetailsElement).open)}><summary>Produtos comprados prontos{comprados.length?` · ${comprados.length} marcado${comprados.length>1?'s':''}`:''}{pendentes.length?` · ${pendentes.length} sem composição`:''}</summary>
+          <div className="workflow-form" style={{padding:'12px 0'}}>{p.proposta.itens.map((_,i)=><label className="workflow-check" key={i}><input type="checkbox" checked={comprados.includes(i)} onChange={e=>setComprados(a=>e.target.checked?[...a,i]:a.filter(n=>n!==i))}/>{i+1}. {nomeItem(i)}{doCadastro.includes(i)?<small className="muted"> · pelo cadastro</small>:semComposicao.includes(i)&&<small className="muted"> · sem composição</small>}</label>)}</div>
         </details>
       </>}
       {acao==='instalacao'&&<Campo label="Situação"><select className="input" value={instalacao} onChange={e=>setInstalacao(e.target.value as typeof instalacao)}>{(['Programada','Concluída'] as const).map(x=><option key={x} value={x}>{rotuloStatus(x)}</option>)}</select></Campo>}

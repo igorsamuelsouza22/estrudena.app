@@ -2,7 +2,7 @@
 
 Análise de 12/10/2026 sobre a versão 1.3.1.
 
-**Andamento (12/10/2026):** fases 1 (só tela) e 2 (regras simples, schema v8) implementadas. Nas decisões 4 e 5, a escolha foi juntar "Em análise" com "Enviada", tirar "Em transporte", juntar fabricação e conferência final e reduzir a instalação a A agendar · Agendada · Concluída. Da fase 3, a decisão 1 também foi implementada: o rascunho é regravado na mesma revisão, e a revisão só avança em "Criar revisão", depois de emitida. As revisões intermediárias criadas antes dessa mudança continuam no histórico. As decisões 2 e 3 continuam como proposta.
+**Andamento (12/10/2026):** fases 1 (só tela) e 2 (regras simples, schema v8) implementadas. Nas decisões 4 e 5, a escolha foi juntar "Em análise" com "Enviada", tirar "Em transporte", juntar fabricação e conferência final e reduzir a instalação a A agendar · Agendada · Concluída. Da fase 3, a decisão 1 também foi implementada: o rascunho é regravado na mesma revisão, e a revisão só avança em "Criar revisão", depois de emitida. As revisões intermediárias criadas antes dessa mudança continuam no histórico. A decisão 2 também: "Comprado pronto" é marcado na ficha do produto e a liberação já traz esses produtos marcados, podendo ser ajustada no pedido. A decisão 3 continua como proposta.
 
 **Princípio:** manter todas as garantias do servidor e reduzir o que a tela *pede* e *mostra*. Essas garantias incluem aceite sem duplicar pedido, revisão emitida imutável, entrega confirmada imutável, Produção sem preços e histórico completo. Cada item abaixo está marcado como **[tela]**, quando muda só a interface, ou **[regra]**, quando muda a lógica no servidor.
 

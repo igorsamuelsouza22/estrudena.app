@@ -63,6 +63,15 @@ async function main() {
     await repo.salvarMaterial(produto)
     db = await repo.carregarDB()
     assert.deepEqual(db.materiais.find(m => m.id === produto.id)!.composicao, produto.composicao)
+    // Comprado pronto: gravado no produto; em matéria-prima não se aplica.
+    assert.equal(db.materiais.find(m => m.id === produto.id)!.compradoPronto, false)
+    await repo.salvarMaterial({ ...produto, compradoPronto: true })
+    await repo.salvarMaterial({ ...metal, compradoPronto: true })
+    db = await repo.carregarDB()
+    assert.equal(db.materiais.find(m => m.id === produto.id)!.compradoPronto, true)
+    assert.equal(db.materiais.find(m => m.id === metal.id)!.compradoPronto, false)
+    await repo.salvarMaterial(produto)
+    db = await repo.carregarDB()
     const motor = new Motor(db)
     perto(motor.custoNaMedida(produto), 96) // 5 kg × 10 + 2 m² × 20 + 2 m × 3.
     const modelo = db.orcamentos.find(o => o.numero === '8026-01-26')!

@@ -292,6 +292,8 @@ CREATE TABLE IF NOT EXISTS separacao_conf (
 
 -- v5: referências de preços, planejamento e conferência dos insumos.
 ALTER TABLE materiais ADD COLUMN IF NOT EXISTS atualizado_em timestamptz DEFAULT now();
+-- Produto revendido sem fabricação: a liberação do pedido já o traz marcado.
+ALTER TABLE materiais ADD COLUMN IF NOT EXISTS comprado_pronto boolean NOT NULL DEFAULT false;
 ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS referencia_precos jsonb;
 ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS entrega_prevista text NOT NULL DEFAULT '';
 ALTER TABLE orcamentos ADD COLUMN IF NOT EXISTS prioridade text NOT NULL DEFAULT 'Normal';

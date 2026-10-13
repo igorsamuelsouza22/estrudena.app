@@ -36,6 +36,8 @@ export interface Material {
   aces: AcesRef[]
   img: string; imgData: string | null
   markup: number; imposto: number; comissao: number; moM2: number
+  /** Revendido sem fabricação: a liberação do pedido já o marca como comprado pronto. */
+  compradoPronto?: boolean
 }
 
 export interface Cor {
